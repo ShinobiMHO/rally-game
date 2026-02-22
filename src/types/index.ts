@@ -22,6 +22,7 @@ export interface MapConfig {
   waypoints: [number, number][];
   trackWidth: number;
   laps: number;
+  checkpoints: number[]; // t values [0-1] along spline
 }
 
 export interface LeaderboardEntry {
@@ -33,6 +34,13 @@ export interface LeaderboardEntry {
   created_at: string;
 }
 
+export interface CheckpointSplit {
+  index: number;
+  elapsedMs: number;
+  deltaMs: number | null; // null on first run
+  isBest: boolean;
+}
+
 export interface GameState {
   phase: 'nickname' | 'carSelect' | 'mapSelect' | 'racing' | 'finished';
   nickname: string;
@@ -41,3 +49,5 @@ export interface GameState {
   elapsedTime: number;
   bestTime: number | null;
 }
+
+export type RaceState = 'countdown' | 'racing' | 'finished';
