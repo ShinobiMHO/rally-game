@@ -4,9 +4,12 @@ import type { LeaderboardEntry } from '@/types';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const isConfigured = supabaseUrl.startsWith('https://') && supabaseAnonKey.length > 10;
+
+export const supabase = isConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 export async function getLeaderboard(mapId: number, limit = 20): Promise<LeaderboardEntry[]> {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from('leaderboard')
     .select('*')
@@ -28,6 +31,7 @@ export async function submitScore(
   timeMs: number,
   carId: number
 ): Promise<LeaderboardEntry | null> {
+  if (!supabase) return null;
   const { data, error } = await supabase
     .from('leaderboard')
     .insert({
