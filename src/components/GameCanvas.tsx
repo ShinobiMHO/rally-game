@@ -28,15 +28,13 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
   const engineRef = useRef<GameEngine | null>(null);
 
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [currentLap, setCurrentLap] = useState(0);
-  const [lapFlash, setLapFlash] = useState(false);
+  const [stageProgress, setStageProgress] = useState(0); // 0-1 along the stage
   const [raceState, setRaceState] = useState<RaceState>('countdown');
   const [countdownStep, setCountdownStep] = useState(3); // 3,2,1,0=GO
   const [finishTime, setFinishTime] = useState(0);
   const [bestTime, setBestTime] = useState<number | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [splitNotifs, setSplitNotifs] = useState<SplitNotif[]>([]);
-  const [lapTimeFlash, setLapTimeFlash] = useState<number | null>(null);
 
   const map = MAP_CONFIGS[mapId];
   const car = CAR_CONFIGS[carId];
@@ -47,11 +45,9 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
     engine.restart();
     setRaceState('countdown');
     setElapsedMs(0);
-    setCurrentLap(0);
+    setStageProgress(0);
     setFinishTime(0);
-    setLapFlash(false);
     setSplitNotifs([]);
-    setLapTimeFlash(null);
   }, []);
 
   useEffect(() => {
@@ -78,13 +74,7 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           setSplitNotifs(prev => prev.filter(n => n.id !== notif.id));
         }, 2500);
       },
-      onLapComplete: (lap, lapTimeMs) => {
-        setCurrentLap(lap);
-        setLapFlash(true);
-        setLapTimeFlash(lapTimeMs);
-        setTimeout(() => setLapFlash(false), 1400);
-        setTimeout(() => setLapTimeFlash(null), 2500);
-      },
+      onProgressUpdate: (t: number) => setStageProgress(t),
       onFinish: (ms) => {
         setFinishTime(ms);
         setBestTime(prev => (prev === null || ms < prev) ? ms : prev);
@@ -98,11 +88,9 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         engine.restart();
         setRaceState('countdown');
         setElapsedMs(0);
-        setCurrentLap(0);
+        setStageProgress(0);
         setFinishTime(0);
-        setLapFlash(false);
         setSplitNotifs([]);
-        setLapTimeFlash(null);
       }
       if (e.key === 'Tab') {
         e.preventDefault();
@@ -204,49 +192,40 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         </div>
       </div>
 
-      {/* ═══════════════ LAP COUNTER (top right) ═══════════════ */}
+      {/* ═══════════════ STAGE PROGRESS (top right) ═══════════════ */}
       <div style={{
         position: 'absolute', top: 16, right: 20,
         pointerEvents: 'none',
+        minWidth: 110,
       }}>
         <div style={{
-          background: lapFlash ? 'rgba(255,200,50,0.95)' : 'rgba(0,0,0,0.65)',
+          background: 'rgba(0,0,0,0.65)',
           backdropFilter: 'blur(6px)',
           borderRadius: 10,
-          padding: '10px 18px',
-          border: lapFlash ? '2px solid rgba(255,220,0,0.8)' : '1px solid rgba(255,255,255,0.12)',
+          padding: '10px 16px',
+          border: '1px solid rgba(255,255,255,0.12)',
           textAlign: 'center',
-          transition: 'background 0.15s, border 0.15s',
-          minWidth: 80,
         }}>
-          <div style={{ fontSize: 10, color: lapFlash ? '#000' : '#888', letterSpacing: 2, marginBottom: 2, fontWeight: 700 }}>LAP</div>
+          <div style={{ fontSize: 10, color: '#888', letterSpacing: 2, marginBottom: 6, fontWeight: 700 }}>STAGE</div>
+          {/* Progress bar */}
           <div style={{
-            fontSize: 30,
-            fontWeight: 900,
-            color: lapFlash ? '#000' : '#fff',
-            lineHeight: 1,
+            width: '100%', height: 6,
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: 3, overflow: 'hidden',
+            marginBottom: 6,
           }}>
-            {Math.min(currentLap + 1, map.laps)}<span style={{ fontSize: 16, opacity: 0.6 }}>/{map.laps}</span>
+            <div style={{
+              width: `${Math.min(stageProgress * 100, 100).toFixed(1)}%`,
+              height: '100%',
+              background: stageProgress > 0.9 ? '#ffd700' : '#00cc66',
+              borderRadius: 3,
+              transition: 'width 0.2s, background 0.3s',
+            }} />
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1 }}>
+            {Math.min(Math.round(stageProgress * 100), 100)}<span style={{ fontSize: 12, opacity: 0.5 }}>%</span>
           </div>
         </div>
-
-        {/* Lap time flash */}
-        {lapTimeFlash !== null && (
-          <div style={{
-            marginTop: 8,
-            background: 'rgba(0,0,0,0.7)',
-            borderRadius: 8,
-            padding: '6px 12px',
-            textAlign: 'center',
-            animation: 'fadeInUp 0.3s ease',
-            border: '1px solid rgba(255,255,255,0.1)',
-          }}>
-            <div style={{ fontSize: 10, color: '#888', letterSpacing: 2 }}>LAP TIME</div>
-            <div style={{ fontSize: 18, fontFamily: 'monospace', fontWeight: 800, color: '#aaffcc' }}>
-              {formatTime(lapTimeFlash)}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ═══════════════ CHECKPOINT SPLITS (center-right) ═══════════════ */}

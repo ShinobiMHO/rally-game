@@ -34,7 +34,7 @@ export type EngineCallback = {
   onTimerUpdate?: (ms: number) => void;
   onCountdown?: (step: number) => void;   // 3, 2, 1, 0=GO
   onCheckpoint?: (split: CheckpointSplit) => void;
-  onLapComplete?: (lap: number, lapTimeMs: number) => void;
+  onProgressUpdate?: (t: number) => void; // 0→1 stage progress
   onFinish?: (totalMs: number) => void;
   onStateChange?: (state: RaceState) => void;
 };
@@ -217,7 +217,7 @@ export class GameEngine {
     const points3D = wp.map(([x, z]) =>
       new THREE.Vector3(x - center.x, 0, z - center.y)
     );
-    this.spline = new THREE.CatmullRomCurve3(points3D, true, 'catmullrom', 0.5);
+    this.spline = new THREE.CatmullRomCurve3(points3D, false, 'catmullrom', 0.5);
 
     const divisions = wp.length * 24;
     const hw = this.mapConfig.trackWidth / 2;
@@ -300,9 +300,36 @@ export class GameEngine {
   }
 
   private buildStartFinishLine() {
-    const tp = this.trackPoints[0];
     const hw = this.mapConfig.trackWidth;
-    const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+
+    // ── START LINE (green banner at beginning) ──
+    const startTp = this.trackPoints[0];
+    const startAngle = Math.atan2(startTp.tangent.x, startTp.tangent.z);
+    const startMat = new THREE.MeshBasicMaterial({ color: 0x00cc44 });
+    const startLine = new THREE.Mesh(new THREE.PlaneGeometry(hw, 1.5), startMat);
+    startLine.rotation.x = -Math.PI / 2;
+    startLine.rotation.z = startAngle;
+    startLine.position.set(startTp.center.x, 0.02, startTp.center.z);
+    this.scene.add(startLine);
+
+    // START arch (green)
+    const archMat = new THREE.MeshLambertMaterial({ color: 0x00aa33 });
+    const perp0 = new THREE.Vector3(Math.cos(startAngle), 0, Math.sin(startAngle));
+    const sL = startTp.center.clone().addScaledVector(perp0, hw / 2 + 0.5);
+    const sR = startTp.center.clone().addScaledVector(perp0, -hw / 2 - 0.5);
+    for (const pos of [sL, sR]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 0.5), archMat);
+      post.position.set(pos.x, 2.5, pos.z);
+      this.scene.add(post);
+    }
+    const startBeam = new THREE.Mesh(new THREE.BoxGeometry(hw + 1.5, 0.5, 0.5), archMat);
+    startBeam.position.set(startTp.center.x, 5, startTp.center.z);
+    startBeam.rotation.y = startAngle;
+    this.scene.add(startBeam);
+
+    // ── FINISH LINE (checkered + red gantry at end) ──
+    const finishTp = this.trackPoints[this.trackPoints.length - 1];
+    const finishAngle = Math.atan2(finishTp.tangent.x, finishTp.tangent.z);
 
     // White base
     const base = new THREE.Mesh(
@@ -310,11 +337,11 @@ export class GameEngine {
       new THREE.MeshBasicMaterial({ color: 0xffffff })
     );
     base.rotation.x = -Math.PI / 2;
-    base.rotation.z = angle;
-    base.position.set(tp.center.x, 0.02, tp.center.z);
+    base.rotation.z = finishAngle;
+    base.position.set(finishTp.center.x, 0.02, finishTp.center.z);
     this.scene.add(base);
 
-    // Checkered
+    // Checkered squares
     const n = 8;
     const cw = hw / n;
     for (let i = 0; i < n; i++) {
@@ -324,19 +351,19 @@ export class GameEngine {
         new THREE.MeshBasicMaterial({ color: 0x111111 })
       );
       c.rotation.x = -Math.PI / 2;
-      c.rotation.z = angle;
-      const perp = angle + Math.PI / 2;
+      c.rotation.z = finishAngle;
+      const perpA = finishAngle + Math.PI / 2;
       const off = (i - n / 2 + 0.5) * cw;
       c.position.set(
-        tp.center.x + Math.cos(perp) * off,
+        finishTp.center.x + Math.cos(perpA) * off,
         0.03,
-        tp.center.z + Math.sin(perp) * off
+        finishTp.center.z + Math.sin(perpA) * off
       );
       this.scene.add(c);
     }
 
-    // Overhead gantry
-    this.buildFinishGantry(tp, hw, angle);
+    // Finish gantry (red beam)
+    this.buildFinishGantry(finishTp, hw, finishAngle);
   }
 
   private buildFinishGantry(tp: TrackPoint, hw: number, angle: number) {
@@ -895,28 +922,16 @@ export class GameEngine {
       }
     }
 
-    // ── Lap detection ──
-    // We passed the finish line if: we were near end (t>0.88) and now near start (t<0.12)
-    const crossedFinish = this.lastCarT > 0.88 && currentT < 0.12;
-    if (crossedFinish) {
-      const lapTimeMs = performance.now() - this.lapStartMs;
-      this.currentLap++;
-      this.lapStartMs = performance.now();
-      // Reset checkpoints for next lap
-      this.lapCheckpointIndex = 0;
-      this.resetCheckpoints();
-
-      this.callbacks.onLapComplete?.(this.currentLap, lapTimeMs);
-      this.playSound(660, 0.12, 'square', 0.08);
-      setTimeout(() => this.playSound(880, 0.2, 'square', 0.08), 100);
-
-      if (this.currentLap >= this.totalLaps) {
-        this.finishRace();
-        return;
-      }
+    // ── Stage finish detection ──
+    // Linear stage: finish when the car reaches the end (t > 0.92)
+    const reachedEnd = currentT > 0.92 && this.raceState === 'racing';
+    if (reachedEnd) {
+      this.finishRace();
+      return;
     }
 
     this.lastCarT = currentT;
+    this.callbacks.onProgressUpdate?.(currentT);
   }
 
   private triggerCheckpoint(index: number) {
