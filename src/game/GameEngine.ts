@@ -636,16 +636,7 @@ export class GameEngine {
   private setupAudio() {
     try {
       this.soundCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = this.soundCtx.createOscillator();
-      const gain = this.soundCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.value = 70;
-      gain.gain.value = 0;
-      osc.connect(gain);
-      gain.connect(this.soundCtx.destination);
-      osc.start();
-      this.engineOscillator = osc;
-      this.engineGain = gain;
+      // Engine oscillator removed — too loud/unpleasant
     } catch {}
   }
 
@@ -958,14 +949,7 @@ export class GameEngine {
   // ─────────────── Audio update ───────────────
 
   private updateAudio() {
-    if (!this.engineOscillator || !this.engineGain || !this.soundCtx) return;
-    const speedRatio = Math.abs(this.physics.speed) / 28;
-    const drift = Math.abs(this.physics.lateralVel) / 18;
-    const freq = 55 + speedRatio * 220 + drift * 40;
-    const vol = speedRatio > 0.03 ? 0.025 + speedRatio * 0.055 + drift * 0.02 : 0;
-    const t = this.soundCtx.currentTime;
-    this.engineOscillator.frequency.setTargetAtTime(freq, t, 0.04);
-    this.engineGain.gain.setTargetAtTime(vol, t, 0.08);
+    // Engine sound removed
   }
 
   // ─────────────── Particles ───────────────
@@ -1057,7 +1041,6 @@ export class GameEngine {
     window.removeEventListener('resize', this.onResize);
     if (this._keydownHandler) window.removeEventListener('keydown', this._keydownHandler);
     if (this._keyupHandler) window.removeEventListener('keyup', this._keyupHandler);
-    try { this.engineOscillator?.stop(); } catch {}
     try { this.soundCtx?.close(); } catch {}
     this.renderer.dispose();
   }
