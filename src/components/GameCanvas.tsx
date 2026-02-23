@@ -322,7 +322,7 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           border: '1px solid rgba(255,255,255,0.06)',
           fontSize: 11, color: '#555', letterSpacing: 0.5,
         }}>
-          ZQSD / ↑↓←→ &nbsp;•&nbsp; <span style={{ color: '#888' }}>R</span> Restart &nbsp;•&nbsp; <span style={{ color: '#888' }}>Tab</span> LB
+          ZQSD / ↑↓←→ &nbsp;•&nbsp; <span style={{ color: '#f90' }}>Space</span> Drift &nbsp;•&nbsp; <span style={{ color: '#888' }}>R</span> Restart &nbsp;•&nbsp; <span style={{ color: '#888' }}>Tab</span> LB
         </div>
       </div>
 

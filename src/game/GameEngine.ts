@@ -14,6 +14,7 @@ interface InputState {
   backward: boolean;
   left: boolean;
   right: boolean;
+  handbrake: boolean;  // Space — initiates drift/slide
 }
 
 interface TrackPoint {
@@ -99,7 +100,7 @@ export class GameEngine {
     this.callbacks = callbacks;
     this.totalLaps = mapConfig.laps;
 
-    this.input = { forward: false, backward: false, left: false, right: false };
+    this.input = { forward: false, backward: false, left: false, right: false, handbrake: false };
     this.initPhysics();
 
     // Renderer
@@ -678,6 +679,7 @@ export class GameEngine {
       if (k === 's' || k === 'arrowdown') this.input.backward = true;
       if (k === 'q' || k === 'arrowleft') this.input.left = true;
       if (k === 'd' || k === 'arrowright') this.input.right = true;
+      if (k === ' ') this.input.handbrake = true;
     };
     const up = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -685,6 +687,7 @@ export class GameEngine {
       if (k === 's' || k === 'arrowdown') this.input.backward = false;
       if (k === 'q' || k === 'arrowleft') this.input.left = false;
       if (k === 'd' || k === 'arrowright') this.input.right = false;
+      if (k === ' ') this.input.handbrake = false;
     };
     window.addEventListener('keydown', dn);
     window.addEventListener('keyup', up);
@@ -777,21 +780,35 @@ export class GameEngine {
     physics.heading += steerInput * steerCurve * steerDir * dt;
 
     // ── Drift Model ──
-    // velHeading lags behind heading — the gap is the drift angle
-    // Lateral velocity accumulates when steering at speed
     const isBraking = input.backward && physics.speed > 3;
-    // Brake drift: braking while steering kicks the rear out hard (rally style)
-    const brakeDriftMultiplier = isBraking ? 3.5 : 1.0;
-    // Reduced grip during braking — rear loses traction
-    const effectiveLateralGrip = isBraking ? lateralGrip * 0.3 : lateralGrip;
+    const isHandbrake = input.handbrake && speedRatio > 0.15;
+
+    // Handbrake: rear locks up — massive drift kick, near-zero grip
+    // Brake drift: moderate kick when braking in corners
+    let driftMultiplier = 1.0;
+    let effectiveLateralGrip = lateralGrip;
+
+    if (isHandbrake) {
+      driftMultiplier = 6.0;
+      effectiveLateralGrip = lateralGrip * 0.05;   // rear slides almost freely
+      // Handbrake bleeds forward speed into lateral (rear kicks out)
+      if (steerInput !== 0) {
+        physics.lateralVel += -steerInput * 18 * speedRatio * dt;
+      }
+      // Slight speed penalty (tyres scrubbing)
+      physics.speed *= 1 - 0.6 * dt;
+    } else if (isBraking) {
+      driftMultiplier = 3.5;
+      effectiveLateralGrip = lateralGrip * 0.3;
+      if (steerInput !== 0 && speedRatio > 0.3) {
+        physics.lateralVel += -steerInput * 4.0 * speedRatio * dt;
+      }
+    }
 
     if (steerInput !== 0 && speedRatio > 0.2) {
-      physics.lateralVel += -steerInput * driftAccum * brakeDriftMultiplier * speedRatio * dt;
+      physics.lateralVel += -steerInput * driftAccum * driftMultiplier * speedRatio * dt;
     }
-    // Extra kick when brake is first applied (initiate rotation)
-    if (isBraking && steerInput !== 0 && speedRatio > 0.3) {
-      physics.lateralVel += -steerInput * 4.0 * speedRatio * dt;
-    }
+
     // Grip recovery: pull lateralVel toward 0
     physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, effectiveLateralGrip * dt);
 

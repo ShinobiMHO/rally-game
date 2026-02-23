@@ -110,7 +110,7 @@ export default function NicknameScreen({ onSubmit }: Props) {
       </div>
 
       <div style={{ color: '#555', marginTop: 32, fontSize: 13 }}>
-        Controls: ZQSD or Arrow Keys • R to restart • Tab for leaderboard
+        Controls: ZQSD or Arrow Keys • Space to Drift • R to restart • Tab for leaderboard
       </div>
 
       <style>{`
