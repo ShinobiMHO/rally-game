@@ -779,15 +779,24 @@ export class GameEngine {
     // ── Drift Model ──
     // velHeading lags behind heading — the gap is the drift angle
     // Lateral velocity accumulates when steering at speed
-    if (steerInput !== 0 && speedRatio > 0.25) {
-      // Accumulate lateral velocity outward (opposite to steering direction)
-      physics.lateralVel += -steerInput * driftAccum * speedRatio * dt;
+    const isBraking = input.backward && physics.speed > 3;
+    // Brake drift: braking while steering kicks the rear out hard (rally style)
+    const brakeDriftMultiplier = isBraking ? 3.5 : 1.0;
+    // Reduced grip during braking — rear loses traction
+    const effectiveLateralGrip = isBraking ? lateralGrip * 0.3 : lateralGrip;
+
+    if (steerInput !== 0 && speedRatio > 0.2) {
+      physics.lateralVel += -steerInput * driftAccum * brakeDriftMultiplier * speedRatio * dt;
+    }
+    // Extra kick when brake is first applied (initiate rotation)
+    if (isBraking && steerInput !== 0 && speedRatio > 0.3) {
+      physics.lateralVel += -steerInput * 4.0 * speedRatio * dt;
     }
     // Grip recovery: pull lateralVel toward 0
-    physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, lateralGrip * dt);
+    physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, effectiveLateralGrip * dt);
 
     // Clamp lateral vel
-    const maxLateral = maxSpeed * 0.65;
+    const maxLateral = maxSpeed * 0.75;
     physics.lateralVel = THREE.MathUtils.clamp(physics.lateralVel, -maxLateral, maxLateral);
 
     // ── Velocity vector = forward + lateral ──
@@ -798,6 +807,34 @@ export class GameEngine {
 
     physics.position.addScaledVector(vel, dt);
     physics.position.y = 0.5;
+
+    // ── Track boundary collision ──
+    // Find the closest point on the spline and push back if out of bounds
+    if (this.spline) {
+      const pos2D = new THREE.Vector2(physics.position.x, physics.position.z);
+      const closestT = this.findClosestT(pos2D);
+      const closestPt = this.spline.getPoint(closestT);
+      const closestPt2D = new THREE.Vector2(closestPt.x, closestPt.z);
+      const distFromCenter = pos2D.distanceTo(closestPt2D);
+      const halfWidth = this.mapConfig.trackWidth * 0.5;
+
+      if (distFromCenter > halfWidth) {
+        // Push car back onto the track edge
+        const pushDir = pos2D.clone().sub(closestPt2D).normalize();
+        const overlap = distFromCenter - halfWidth;
+        physics.position.x -= pushDir.x * (overlap + 0.1);
+        physics.position.z -= pushDir.y * (overlap + 0.1);
+
+        // Kill velocity component going into the wall
+        const wallNormal = new THREE.Vector3(-pushDir.x, 0, -pushDir.y);
+        const velDotNormal = vel.dot(wallNormal);
+        if (velDotNormal < 0) {
+          // Cancel out-of-bounds velocity, keep ~20% as bounce
+          physics.speed *= 0.45;
+          physics.lateralVel *= 0.4;
+        }
+      }
+    }
 
     // ── Mesh update ──
     this.carGroup.position.copy(physics.position);
