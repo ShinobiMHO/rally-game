@@ -1456,8 +1456,11 @@ export class GameEngine {
           const impact = Math.abs(this.verticalVel);
           // Perte de vitesse à l'impact proportionnelle à la hauteur de chute
           if (impact > 4) physics.speed *= Math.max(0.65, 1 - impact * 0.028);
-          // Son d'impact
-          if (impact > 5) this.playSound(120, 0.18, 'sawtooth', 0.12);
+          // Son d'impact + camera shake
+          if (impact > 5) {
+            this.playSound(120, 0.18, 'sawtooth', 0.12);
+            this.camShake = Math.min(impact * 0.3, 2.5);
+          }
           this.verticalVel = 0;
           this.isAirborne = false;
         }
@@ -1603,31 +1606,37 @@ export class GameEngine {
 
   // ─────────────── Camera — Floating Third Person ───────────────
 
+  private camShake: number = 0; // landing impact shake
+
   private updateCamera(dt: number) {
     const target = this.physics.position.clone();
     const speedAbs = Math.abs(this.physics.speed);
 
-    // Camera heading lags behind car heading — doesn't snap to turns
+    // Camera heading lags behind car heading
     const headingLerp = 0.07 + speedAbs * 0.003;
-    // Shortest-path angle lerp (avoid ±π wrap glitch)
     let diff = this.physics.heading - this.cameraHeading;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     this.cameraHeading += diff * headingLerp;
 
-    // Camera position: behind & slightly above, based on camera heading
-    const height = 3.2 + speedAbs * 0.03;
-    const behind = 11 + speedAbs * 0.08;
+    // En l'air : caméra recule + monte pour voir l'arc du saut
+    const airBonusH = this.isAirborne ? Math.max(0, this.verticalVel * 0.5) + 3 : 0;
+    const airBonusBehind = this.isAirborne ? 4 : 0;
 
+    const height = 3.2 + speedAbs * 0.03 + airBonusH;
+    const behind = 11 + speedAbs * 0.08 + airBonusBehind;
+
+    // Decay camera shake
+    this.camShake *= 0.88;
+
+    const shake = this.camShake;
     const offset = new THREE.Vector3(
-      -Math.sin(this.cameraHeading) * behind,
-      height,
-      -Math.cos(this.cameraHeading) * behind
+      -Math.sin(this.cameraHeading) * behind + (Math.random() - 0.5) * shake,
+      height + (Math.random() - 0.5) * shake * 0.5,
+      -Math.cos(this.cameraHeading) * behind + (Math.random() - 0.5) * shake * 0.3
     );
 
-    // Position lerp is fast so car stays in frame even during big turns
-    this.camera.position.lerp(target.clone().add(offset), 0.12);
-    // Always look at car (not at camera heading target)
+    this.camera.position.lerp(target.clone().add(offset), 0.10);
     this.camera.lookAt(target.x, target.y + 1.0, target.z);
   }
 
