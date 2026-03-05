@@ -122,8 +122,8 @@ export class GameEngine {
 
     // Sunset sky — Forêt des Corbières crépuscule
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xc8622a);
-    this.scene.fog = new THREE.FogExp2(0xb85a20, 0.006); // warm haze
+    this.scene.background = new THREE.Color(0xa04818); // orange foncé coucher de soleil
+    this.scene.fog = new THREE.FogExp2(0x6a3010, 0.009); // brume forêt plus dense
 
     // Third-person camera — close, low, behind the car
     this.camera = new THREE.PerspectiveCamera(72, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
@@ -272,6 +272,7 @@ export class GameEngine {
 
     // Dirt tyre tracks (darker strips on road center)
     this.buildTyreTracks(divisions);
+    this.buildRoadEdges(divisions);
     this.buildStartFinishLine();
     this.buildBarriers();
     this.buildCheckpoints();
@@ -301,6 +302,45 @@ export class GameEngine {
         dash.rotation.z = angle;
         dash.position.set(pos.x, tp.center.y + 0.03, pos.z);
         this.scene.add(dash);
+      }
+    }
+  }
+
+  private buildRoadEdges(divisions: number) {
+    // Bordures de terre foncée + herbe au bord de la piste (effet chemin de terre)
+    const edgeMat = new THREE.MeshLambertMaterial({ color: 0x1e3a08 });   // herbe sombre
+    const muddyMat = new THREE.MeshLambertMaterial({ color: 0x3d2208 });  // terre boueuse
+    const hw = this.mapConfig.trackWidth / 2;
+
+    for (let i = 0; i < divisions - 4; i += 3) {
+      const tp = this.trackPoints[i];
+      const tpNext = this.trackPoints[i + 3];
+      if (!tp || !tpNext) continue;
+
+      const tangent = tp.tangent.clone().normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      const segLen = tp.center.distanceTo(tpNext.center) * 3.1;
+
+      for (const side of [-1, 1]) {
+        // Bande boueuse immédiatement au bord de route (1.0–1.5× hw)
+        const muddyOff = hw * 1.25 * side;
+        const muddyPos = tp.center.clone().addScaledVector(normal, muddyOff);
+        const muddyGeo = new THREE.PlaneGeometry(hw * 0.5, segLen);
+        const muddy = new THREE.Mesh(muddyGeo, muddyMat);
+        muddy.rotation.x = -Math.PI / 2;
+        muddy.rotation.z = Math.atan2(tangent.x, tangent.z);
+        muddy.position.set(muddyPos.x, tp.center.y + 0.01, muddyPos.z);
+        this.scene.add(muddy);
+
+        // Bande herbe/mousse (1.5–2.5× hw)
+        const grassOff = hw * 1.9 * side;
+        const grassPos = tp.center.clone().addScaledVector(normal, grassOff);
+        const grassGeo = new THREE.PlaneGeometry(hw * 1.0, segLen);
+        const grass = new THREE.Mesh(grassGeo, edgeMat);
+        grass.rotation.x = -Math.PI / 2;
+        grass.rotation.z = Math.atan2(tangent.x, tangent.z);
+        grass.position.set(grassPos.x, tp.center.y + 0.01, grassPos.z);
+        this.scene.add(grass);
       }
     }
   }
@@ -694,10 +734,9 @@ export class GameEngine {
     const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
 
-    for (let i = 0; i < 450; i++) {
+    for (let i = 0; i < 550; i++) {
       const x = (rng() - 0.5) * 600;
-      const z = (rng() - 0.5) * 650;
-      const pos = new THREE.Vector3(x, 0, z);
+      const z = (rng() - 0.5) * 1100; // couvre toute la longueur de piste
 
       let minDist = Infinity;
       let roadY = 0;
@@ -705,7 +744,7 @@ export class GameEngine {
         const d = new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z));
         if (d < minDist) { minDist = d; roadY = tp.center.y; }
       }
-      if (minDist < this.mapConfig.trackWidth * 1.8) continue;
+      if (minDist < this.mapConfig.trackWidth * 1.2) continue;  // forêt serrée
 
       const treeY = this.getTerrainY(x, z);
       const h = 6 + rng() * 10;
@@ -738,16 +777,16 @@ export class GameEngine {
     const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xddddcc });
     const birchCrownMat = new THREE.MeshLambertMaterial({ color: 0x88cc44 });
 
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 100; i++) {
       const x = (rng() - 0.5) * 600;
-      const z = (rng() - 0.5) * 650;
+      const z = (rng() - 0.5) * 1100;
 
       let minDist = Infinity;
       for (const tp of this.trackPoints) {
         const d = new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z));
         if (d < minDist) minDist = d;
       }
-      if (minDist < this.mapConfig.trackWidth * 1.8) continue;
+      if (minDist < this.mapConfig.trackWidth * 1.2) continue;
 
       const treeY = this.getTerrainY(x, z);
       const h = 7 + rng() * 8;
@@ -814,6 +853,82 @@ export class GameEngine {
 
     // ── Lakes ──
     this.buildLakes(rng);
+
+    // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
+    const fernMat = new THREE.MeshLambertMaterial({ color: 0x2d6611 });
+    const borderBushMat1 = new THREE.MeshLambertMaterial({ color: 0x1e5208 });
+    const borderBushMat2 = new THREE.MeshLambertMaterial({ color: 0x3a7a18 });
+    const borderStumpMat = new THREE.MeshLambertMaterial({ color: 0x4a2e10 });
+    const rngBorder = this.seededRng(321);
+    const hw = this.mapConfig.trackWidth;
+
+    // On parcourt chaque trackPoint et on place des objets sur les deux côtés
+    for (let i = 2; i < this.trackPoints.length - 2; i += 2) {
+      const tp = this.trackPoints[i];
+      const roadDir = tp.tangent.clone().normalize();
+      const perp = new THREE.Vector3(-roadDir.z, 0, roadDir.x); // perpendiculaire à la route
+
+      // Côtés gauche et droit
+      for (const side of [-1, 1]) {
+        const numObjects = Math.floor(3 + rngBorder() * 4);
+        for (let k = 0; k < numObjects; k++) {
+          // Distance du bord de route : de 1.05× à 1.9× la demi-largeur
+          const dist = hw * (1.05 + rngBorder() * 0.85);
+          const forward = (rngBorder() - 0.5) * 8; // décalage le long de la piste
+          const pos = tp.center.clone()
+            .addScaledVector(perp, side * dist)
+            .addScaledVector(roadDir, forward);
+          pos.y = tp.center.y + this.getTerrainY(pos.x, pos.z) * 0.2 + 0.02;
+
+          const type = rngBorder();
+
+          if (type < 0.40) {
+            // Fougère (flat quad billboardé)
+            const fw = 1.5 + rngBorder() * 2.5;
+            const fh = 0.8 + rngBorder() * 1.2;
+            const fern = new THREE.Mesh(new THREE.PlaneGeometry(fw, fh), fernMat);
+            fern.rotation.x = -0.35;
+            fern.rotation.y = rngBorder() * Math.PI * 2;
+            fern.position.set(pos.x, pos.y + fh * 0.45, pos.z);
+            this.scene.add(fern);
+            // Deuxième feuille croisée
+            const fern2 = fern.clone();
+            fern2.rotation.y += Math.PI / 2;
+            this.scene.add(fern2);
+
+          } else if (type < 0.72) {
+            // Buisson
+            const br = 1.2 + rngBorder() * 2.0;
+            const bush = new THREE.Mesh(new THREE.SphereGeometry(br, 5, 4), rngBorder() > 0.5 ? borderBushMat1 : borderBushMat2);
+            bush.scale.y = 0.6 + rngBorder() * 0.4;
+            bush.position.set(pos.x, pos.y + br * 0.4, pos.z);
+            this.scene.add(bush);
+
+          } else if (type < 0.88) {
+            // Petit arbre de bordure (tronc court, très proche)
+            const th = 3 + rngBorder() * 4;
+            const tr = 0.8 + rngBorder() * 1.2;
+            const bTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, th * 0.5, 5), trunkMat);
+            bTrunk.position.y = th * 0.25;
+            const bCrown = new THREE.Mesh(new THREE.ConeGeometry(tr, th * 0.7, 5), treeMat1);
+            bCrown.position.y = th * 0.6;
+            const bt = new THREE.Group();
+            bt.add(bTrunk, bCrown);
+            bt.position.set(pos.x, pos.y, pos.z);
+            bt.rotation.y = rngBorder() * Math.PI * 2;
+            this.scene.add(bt);
+
+          } else {
+            // Souche coupée
+            const sr = 0.3 + rngBorder() * 0.5;
+            const sh = 0.4 + rngBorder() * 0.6;
+            const stump = new THREE.Mesh(new THREE.CylinderGeometry(sr * 0.7, sr, sh, 6), borderStumpMat);
+            stump.position.set(pos.x, pos.y + sh * 0.5, pos.z);
+            this.scene.add(stump);
+          }
+        }
+      }
+    }
 
     // ── Arbres automnaux (dorés/rouges) — coucher de soleil ──
     const autumnMats = [
@@ -901,8 +1016,8 @@ export class GameEngine {
   }
 
   private buildTerrain(rng: () => number) {
-    const size = 800;
-    const segs = 70;
+    const size = 1200;  // couvre toute la longueur de piste (~1000 unités)
+    const segs = 80;
     const groundGeo = new THREE.PlaneGeometry(size, size, segs, segs);
     groundGeo.rotateX(-Math.PI / 2);
 
@@ -933,8 +1048,8 @@ export class GameEngine {
     }
     groundGeo.computeVertexNormals();
 
-    const baseGroundColor = new THREE.Color(this.mapConfig.groundColor);
-    baseGroundColor.lerp(new THREE.Color(0xcc7733), 0.15);
+    // Sol forestier foncé avec teinte automne/crépuscule
+    const baseGroundColor = new THREE.Color(0x1a3008); // vert-brun foncé
     const groundMat = new THREE.MeshLambertMaterial({ color: baseGroundColor });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
@@ -1182,23 +1297,26 @@ export class GameEngine {
   // ─────────────── Lights ───────────────
 
   private setupLights() {
-    // Sunset ambient — warm orange
-    this.scene.add(new THREE.AmbientLight(0xcc8844, 0.7));
+    // Sunset ambient — chaud mais pas trop lumineux (forêt filtre la lumière)
+    this.scene.add(new THREE.AmbientLight(0xaa6622, 0.55));
 
-    // Sun — rasant de côté, lumière dorée crépusculaire
-    const sun = new THREE.DirectionalLight(0xffaa44, 1.2);
-    sun.position.set(80, 35, -20);
+    // Sol ambient — lumière remontante verte (sous-bois)
+    this.scene.add(new THREE.AmbientLight(0x112208, 0.35));
+
+    // Soleil — très rasant, lumière dorée crépusculaire
+    const sun = new THREE.DirectionalLight(0xff8833, 1.0);
+    sun.position.set(120, 18, -40); // très bas sur l'horizon
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 600;
-    sun.shadow.camera.left = sun.shadow.camera.bottom = -220;
-    sun.shadow.camera.right = sun.shadow.camera.top = 220;
+    sun.shadow.camera.far = 700;
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -280;
+    sun.shadow.camera.right = sun.shadow.camera.top = 280;
     this.scene.add(sun);
 
-    // Fill light — ombre violette du côté opposé au soleil
-    const fill = new THREE.DirectionalLight(0x4422aa, 0.35);
-    fill.position.set(-50, 20, 60);
+    // Fill light — ombre mauve/violet du sous-bois
+    const fill = new THREE.DirectionalLight(0x331166, 0.4);
+    fill.position.set(-60, 30, 80);
     this.scene.add(fill);
   }
 
