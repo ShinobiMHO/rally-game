@@ -267,33 +267,10 @@ export class GameEngine {
       indices.push(a, c, b, b, c, d);
     }
 
-    // Vertex colors — chemin de terre : bords sombres (herbe/boue), centre plus clair
-    const roadColors: number[] = [];
-    const centerColor = new THREE.Color(0x8a5a2a); // terre sèche
-    const edgeColor   = new THREE.Color(0x3a2210); // bords boueux très sombres
-    for (let i = 0; i <= divisions; i++) {
-      roadColors.push(edgeColor.r, edgeColor.g, edgeColor.b);   // gauche
-      roadColors.push(edgeColor.r, edgeColor.g, edgeColor.b);   // droite
-    }
-    // Re-color center strip slightly lighter (modulate existing vertices)
-    // Actually: left vertex = edge, right vertex = edge, center calculated on-the-fly
-    // Use a simpler approach — per-vertex based on U coordinate (0=left, 1=right)
-    // We'll just set edge verts darker and leave the strip itself the center color
-    // Since we only have 2 verts per row (L and R), apply a mild variation
-    const roadColorsF: number[] = [];
-    const rngRoad = this.seededRng(787);
-    for (let i = 0; i <= divisions; i++) {
-      const variation = (rngRoad() - 0.5) * 0.06;
-      const lc = edgeColor.clone().lerp(centerColor, 0.3 + variation);
-      const rc = edgeColor.clone().lerp(centerColor, 0.35 + variation);
-      roadColorsF.push(lc.r, lc.g, lc.b, rc.r, rc.g, rc.b);
-    }
-
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(roadColorsF, 3));
     geo.setIndex(indices);
 
     // Dirt road — texture procédurale
@@ -940,8 +917,10 @@ export class GameEngine {
     this.buildTerrain(rng);
 
     // ── Dense forest: 450 trees, packed on both sides ──
-    const treeMat1 = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
-    const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
+    const treeMat1 = new THREE.MeshStandardMaterial({ color: this.mapConfig.treeColor, roughness: 1.0, metalness: 0 });
+    const treeMat2 = new THREE.MeshStandardMaterial({ color: 0x2a6b10, roughness: 1.0, metalness: 0 });
+    const treeMat3 = new THREE.MeshStandardMaterial({ color: 0x3a8020, roughness: 1.0, metalness: 0 }); // vert clair
+    const treeMats = [treeMat1, treeMat2, treeMat3];
     const barkTex = this.loadTex('/textures/bark.jpg', 1, 3);
     const trunkMat = new THREE.MeshStandardMaterial({ map: barkTex, roughness: 0.9, metalness: 0 });
 
@@ -961,7 +940,7 @@ export class GameEngine {
       const h = 6 + rng() * 10;
       const r = 2.0 + rng() * 3.0;
       const sides = Math.floor(4 + rng() * 3);
-      const mat = rng() > 0.45 ? treeMat1 : treeMat2;
+      const mat = treeMats[Math.floor(rng() * treeMats.length)];
 
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, h * 0.4, 5), trunkMat);
       trunk.position.y = h * 0.2;
@@ -1843,11 +1822,30 @@ export class GameEngine {
     sky.renderOrder = -1;
     this.scene.add(sky);
 
-    // Soleil de jour — haut dans le ciel
+    // Soleil
     const sunSphereMat = new THREE.MeshBasicMaterial({ color: 0xfffce0 });
     const sunSphere = new THREE.Mesh(new THREE.SphereGeometry(14, 12, 8), sunSphereMat);
     sunSphere.position.set(200, 280, -100);
     this.scene.add(sunSphere);
+
+    // Nuages procéduraux
+    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.88 });
+    const cloudRng = this.seededRng(246);
+    for (let i = 0; i < 12; i++) {
+      const cloud = new THREE.Group();
+      const cx = (cloudRng() - 0.5) * 800;
+      const cz = (cloudRng() - 0.5) * 1200;
+      const cy = 120 + cloudRng() * 80;
+      for (let b = 0; b < 5; b++) {
+        const r = 18 + cloudRng() * 22;
+        const blob = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), cloudMat);
+        blob.position.set((cloudRng()-0.5)*35, (cloudRng()-0.5)*8, (cloudRng()-0.5)*20);
+        blob.scale.y = 0.5 + cloudRng() * 0.3;
+        cloud.add(blob);
+      }
+      cloud.position.set(cx, cy, cz);
+      this.scene.add(cloud);
+    }
   }
 
   private setupLights() {
