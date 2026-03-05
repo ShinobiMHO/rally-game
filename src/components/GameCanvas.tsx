@@ -28,6 +28,7 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
   const engineRef = useRef<GameEngine | null>(null);
 
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [speedKmh, setSpeedKmh] = useState(0);
   const [stageProgress, setStageProgress] = useState(0); // 0-1 along the stage
   const [raceState, setRaceState] = useState<RaceState>('countdown');
   const [countdownStep, setCountdownStep] = useState(3); // 3,2,1,0=GO
@@ -74,6 +75,7 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           setSplitNotifs(prev => prev.filter(n => n.id !== notif.id));
         }, 2500);
       },
+      onSpeedUpdate: (kmh) => setSpeedKmh(Math.round(kmh)),
       onProgressUpdate: (t: number) => setStageProgress(t),
       onFinish: (ms) => {
         setFinishTime(ms);
@@ -286,6 +288,57 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           <span style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>{car.name}</span>
           <span style={{ color: '#444' }}>•</span>
           <span style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>{map.name}</span>
+        </div>
+      </div>
+
+      {/* ═══════════════ SPEEDOMETER (bottom center) ═══════════════ */}
+      <div style={{
+        position: 'absolute', bottom: 20, left: '50%',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          background: 'rgba(0,0,0,0.72)',
+          backdropFilter: 'blur(8px)',
+          borderRadius: 16,
+          padding: '10px 28px 8px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'baseline', gap: 4,
+          boxShadow: speedKmh > 80 ? '0 0 24px rgba(255,120,0,0.25)' : 'none',
+          transition: 'box-shadow 0.3s',
+        }}>
+          <span style={{
+            fontSize: 52,
+            fontFamily: '"Courier New", monospace',
+            fontWeight: 900,
+            lineHeight: 1,
+            color: speedKmh > 100 ? '#ff8833' : speedKmh > 60 ? '#ffcc44' : '#ffffff',
+            transition: 'color 0.2s',
+            minWidth: '3ch',
+            textAlign: 'right',
+          }}>
+            {speedKmh}
+          </span>
+          <span style={{ fontSize: 14, color: '#666', fontWeight: 700, paddingBottom: 4 }}>km/h</span>
+        </div>
+        {/* Speed bar */}
+        <div style={{
+          width: '100%', height: 3, marginTop: 6,
+          background: 'rgba(255,255,255,0.08)',
+          borderRadius: 2, overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${Math.min((speedKmh / 130) * 100, 100)}%`,
+            height: '100%',
+            background: speedKmh > 100
+              ? 'linear-gradient(90deg, #ff6600, #ff2200)'
+              : speedKmh > 60
+              ? 'linear-gradient(90deg, #ffcc00, #ff8800)'
+              : 'linear-gradient(90deg, #00cc66, #00ffaa)',
+            borderRadius: 2,
+            transition: 'width 0.1s, background 0.2s',
+          }} />
         </div>
       </div>
 

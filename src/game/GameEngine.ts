@@ -37,6 +37,7 @@ export type EngineCallback = {
   onProgressUpdate?: (t: number) => void;
   onFinish?: (totalMs: number) => void;
   onStateChange?: (state: RaceState) => void;
+  onSpeedUpdate?: (kmh: number) => void;
 };
 
 export class GameEngine {
@@ -76,6 +77,9 @@ export class GameEngine {
 
   private particles: THREE.Points[] = [];
   private dirtParticleTimer = 0;
+
+  // Camera heading — lags behind car, decoupled from car rotation
+  private cameraHeading: number = 0;
 
   private soundCtx: AudioContext | null = null;
 
@@ -146,6 +150,7 @@ export class GameEngine {
     this.physics.velHeading = angle;
     this.physics.speed = 0;
     this.physics.lateralVel = 0;
+    this.cameraHeading = angle; // sync on start/restart
     if (this.carGroup) {
       this.carGroup.position.copy(this.physics.position);
       this.carGroup.rotation.y = this.physics.heading;
@@ -953,6 +958,8 @@ export class GameEngine {
     this.updateParticles(dt, now);
     this.updateTimer(now);
     this.checkProgress();
+    // Speed in km/h (game units × ~4.5 to feel like real km/h)
+    this.callbacks.onSpeedUpdate?.(Math.abs(this.physics.speed) * 4.5);
   }
 
   // ─────────────── Physics ───────────────
@@ -964,8 +971,8 @@ export class GameEngine {
     const handlingBoost = 0.7 + (carConfig.handling - 1) * 0.16;
     const maxSpeed = 28 * speedBoost;
     const accel = 22 * speedBoost;
-    const brakeForce = 32;
-    const rollFriction = 4;
+    const brakeForce = 42;   // more aggressive braking
+    const rollFriction = 5;
     const steerMax = 2.2 * handlingBoost;
     const lateralGrip = 2.5 + (carConfig.handling - 1) * 0.5;
     const driftAccum = 6 + (5 - carConfig.handling) * 1.2;
@@ -1028,6 +1035,17 @@ export class GameEngine {
     physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, effectiveLateralGrip * dt);
     const maxLateral = maxSpeed * 0.75;
     physics.lateralVel = THREE.MathUtils.clamp(physics.lateralVel, -maxLateral, maxLateral);
+
+    // ── Cornering drag — steering scrubs forward speed ──
+    // The harder you turn, the more speed you lose (tire scrub + load transfer)
+    if (Math.abs(steerInput) > 0.1 && speedRatio > 0.1) {
+      const cornerDrag = Math.abs(steerInput) * speedRatio * 3.5;
+      physics.speed -= Math.sign(physics.speed) * cornerDrag * dt;
+    }
+
+    // ── Lateral speed also bleeds into forward speed loss ──
+    const lateralScrub = Math.abs(physics.lateralVel) * 0.06;
+    physics.speed -= Math.sign(physics.speed) * lateralScrub * dt;
 
     const fwd = new THREE.Vector3(Math.sin(physics.heading), 0, Math.cos(physics.heading));
     const right = new THREE.Vector3(Math.cos(physics.heading), 0, -Math.sin(physics.heading));
@@ -1170,26 +1188,35 @@ export class GameEngine {
     this.callbacks.onTimerUpdate?.(this.elapsedMs);
   }
 
-  // ─────────────── Camera — Third Person Behind ───────────────
+  // ─────────────── Camera — Floating Third Person ───────────────
 
   private updateCamera(dt: number) {
     const target = this.physics.position.clone();
     const speedAbs = Math.abs(this.physics.speed);
 
-    // Low, behind — classic rally third-person camera
-    const height = 2.8 + speedAbs * 0.035;
-    const behind = 9.5 + speedAbs * 0.09;
-    const lookAheadY = 1.2; // look slightly above car roof
+    // Camera heading lags behind car heading — doesn't snap to turns
+    // Slow at low speed, slightly faster at high speed
+    const headingLerp = 0.03 + speedAbs * 0.0015;
+    // Shortest-path angle lerp (avoid ±π wrap glitch)
+    let diff = this.physics.heading - this.cameraHeading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    this.cameraHeading += diff * headingLerp;
+
+    // Camera position: behind & slightly above, based on camera heading
+    const height = 3.2 + speedAbs * 0.03;
+    const behind = 11 + speedAbs * 0.08;
 
     const offset = new THREE.Vector3(
-      -Math.sin(this.physics.heading) * behind,
+      -Math.sin(this.cameraHeading) * behind,
       height,
-      -Math.cos(this.physics.heading) * behind
+      -Math.cos(this.cameraHeading) * behind
     );
 
-    const camLerpSpeed = 0.1 + speedAbs * 0.002;
-    this.camera.position.lerp(target.clone().add(offset), camLerpSpeed);
-    this.camera.lookAt(target.x, target.y + lookAheadY, target.z);
+    // Position lerp is fast so car stays in frame even during big turns
+    this.camera.position.lerp(target.clone().add(offset), 0.12);
+    // Always look at car (not at camera heading target)
+    this.camera.lookAt(target.x, target.y + 1.0, target.z);
   }
 
   // ─────────────── Particles (dirt spray) ───────────────
