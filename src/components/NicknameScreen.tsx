@@ -24,41 +24,56 @@ export default function NicknameScreen({ onSubmit }: Props) {
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       height: '100vh', width: '100vw',
-      background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
+      background: 'linear-gradient(160deg, #1a0a00, #3a1500, #5a2800, #3a1500)',
+      padding: '20px',
+      boxSizing: 'border-box',
     }}>
       {/* Logo */}
-      <div style={{ textAlign: 'center', marginBottom: 48 }}>
+      <div style={{ textAlign: 'center', marginBottom: 36 }}>
         <div style={{
-          fontSize: 72, fontWeight: 900, letterSpacing: -2,
-          background: 'linear-gradient(90deg, #ff6b35, #f7c59f, #efefd0)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          textShadow: 'none', lineHeight: 1,
+          fontSize: 'clamp(48px, 12vw, 80px)',
+          fontWeight: 900,
+          letterSpacing: -2,
+          background: 'linear-gradient(90deg, #ff6600, #ffaa33, #ffdd88)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          lineHeight: 1,
         }}>
           🏁 RALLY
         </div>
         <div style={{
-          fontSize: 32, fontWeight: 700, letterSpacing: 8,
-          color: '#aaa', marginTop: 4,
+          fontSize: 'clamp(16px, 4vw, 28px)',
+          fontWeight: 700,
+          letterSpacing: 6,
+          color: '#aa7744',
+          marginTop: 4,
         }}>
-          RACER 3D
+          FORÊT DES CORBIÈRES
+        </div>
+        <div style={{
+          fontSize: 13, color: '#664422', marginTop: 6, letterSpacing: 2,
+        }}>
+          ▸ CRÉPUSCULE — SPÉCIALE TERRE ◂
         </div>
       </div>
 
       {/* Input card */}
       <div style={{
-        background: 'rgba(255,255,255,0.07)',
-        border: '1px solid rgba(255,255,255,0.15)',
+        background: 'rgba(255,120,30,0.08)',
+        border: '1px solid rgba(255,120,30,0.25)',
         borderRadius: 24,
-        padding: '40px 48px',
+        padding: 'clamp(24px, 5vw, 40px) clamp(20px, 6vw, 48px)',
         backdropFilter: 'blur(10px)',
         textAlign: 'center',
-        minWidth: 360,
+        width: '100%',
+        maxWidth: 400,
+        boxSizing: 'border-box',
       }}>
-        <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
-          Enter Your Nickname
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: '#ffcc88' }}>
+          Ton pseudo pilote
         </div>
-        <div style={{ color: '#888', marginBottom: 24, fontSize: 14 }}>
-          Your name will appear on the leaderboard
+        <div style={{ color: '#886644', marginBottom: 20, fontSize: 13 }}>
+          Affiché dans le classement
         </div>
 
         <input
@@ -67,18 +82,19 @@ export default function NicknameScreen({ onSubmit }: Props) {
           onChange={e => setNick(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
           maxLength={20}
-          placeholder="e.g. SpeedKing, DriftMaster..."
+          placeholder="ex: SpeedKing, DriftBoss..."
           style={{
             width: '100%',
             padding: '14px 18px',
             borderRadius: 12,
-            border: shake ? '2px solid #ff4444' : '2px solid rgba(255,255,255,0.2)',
-            background: 'rgba(255,255,255,0.08)',
-            color: '#fff',
+            border: shake ? '2px solid #ff4444' : '2px solid rgba(255,150,50,0.35)',
+            background: 'rgba(255,100,20,0.1)',
+            color: '#ffe0b0',
             fontSize: 18,
             fontWeight: 600,
             outline: 'none',
             textAlign: 'center',
+            boxSizing: 'border-box',
             transition: 'border-color 0.2s',
             animation: shake ? 'shake 0.4s ease-in-out' : undefined,
           }}
@@ -87,30 +103,48 @@ export default function NicknameScreen({ onSubmit }: Props) {
         <button
           onClick={handleSubmit}
           style={{
-            marginTop: 20,
+            marginTop: 18,
             width: '100%',
             padding: '16px',
             borderRadius: 12,
             border: 'none',
-            background: 'linear-gradient(135deg, #ff6b35, #f7931a)',
+            background: 'linear-gradient(135deg, #cc4400, #ff8800)',
             color: '#fff',
             fontSize: 18,
-            fontWeight: 800,
+            fontWeight: 900,
             cursor: 'pointer',
-            letterSpacing: 1,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
             transition: 'transform 0.1s, filter 0.1s',
+            boxShadow: '0 4px 20px rgba(255,100,0,0.4)',
           }}
           onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.15)')}
           onMouseLeave={e => (e.currentTarget.style.filter = 'brightness(1)')}
           onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.97)')}
           onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
         >
-          START RACING →
+          AU DÉPART →
         </button>
       </div>
 
-      <div style={{ color: '#555', marginTop: 32, fontSize: 13 }}>
-        Controls: ZQSD or Arrow Keys • Space to Drift • R to restart • Tab for leaderboard
+      {/* Features hint */}
+      <div style={{
+        marginTop: 28,
+        display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center',
+        maxWidth: 380,
+      }}>
+        {['🌲 Forêt dense', '🌉 Pont suspendu', '🚀 Saut', '🕳️ Tunnel', '📱 Tactile'].map(f => (
+          <div key={f} style={{
+            fontSize: 12, color: '#664422',
+            background: 'rgba(255,100,0,0.07)',
+            border: '1px solid rgba(255,100,0,0.15)',
+            borderRadius: 20, padding: '4px 10px',
+          }}>{f}</div>
+        ))}
+      </div>
+
+      <div style={{ color: '#442200', marginTop: 20, fontSize: 12, textAlign: 'center' }}>
+        ZQSD / Flèches • Espace = Dérive • R = Restart
       </div>
 
       <style>{`

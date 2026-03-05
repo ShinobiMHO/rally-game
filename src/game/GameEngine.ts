@@ -1354,9 +1354,9 @@ export class GameEngine {
     const accel = 13 * speedBoost;      // accélération bien plus progressive
     const brakeForce = 44;
     const rollFriction = 5;
-    const steerMax = 2.2 * handlingBoost;
-    const lateralGrip = 2.5 + (carConfig.handling - 1) * 0.5;
-    const driftAccum = 6 + (5 - carConfig.handling) * 1.2;
+    const steerMax = 2.6 * handlingBoost;        // braquage plus vif
+    const lateralGrip = 2.8 + (carConfig.handling - 1) * 0.5;
+    const driftAccum = 7 + (5 - carConfig.handling) * 1.0;  // drift plus généreux
 
     const speedRatio = Math.abs(physics.speed) / maxSpeed;
 
