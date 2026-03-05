@@ -229,28 +229,44 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           pointerEvents: 'none',
+          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)',
         }}>
+          {/* Stage name banner */}
+          <div style={{
+            marginBottom: 24,
+            textAlign: 'center',
+            animation: 'fadeInUp 0.5s ease',
+          }}>
+            <div style={{ fontSize: 11, color: '#ff9944', letterSpacing: 4, fontWeight: 700, marginBottom: 4 }}>
+              SPÉCIALE CHRONOMÉTRÉE
+            </div>
+            <div style={{ fontSize: 20, color: '#ffcc88', fontWeight: 900, letterSpacing: 2 }}>
+              {map.name.toUpperCase()}
+            </div>
+          </div>
+
           <div key={countdownStep} style={{
-            fontSize: countdownStep === 0 ? 100 : 130,
+            fontSize: countdownStep === 0 ? 110 : 140,
             fontWeight: 900,
             letterSpacing: -4,
-            color: countdownStep === 0 ? '#00ff88' : countdownStep === 1 ? '#ffcc00' : '#ffffff',
+            color: countdownStep === 0 ? '#ffaa33' : countdownStep === 1 ? '#ffdd33' : '#ffffff',
             textShadow: countdownStep === 0
-              ? '0 0 40px #00ff88, 0 4px 24px rgba(0,0,0,0.8)'
+              ? '0 0 60px #ff8800, 0 4px 24px rgba(0,0,0,0.9)'
               : '0 4px 24px rgba(0,0,0,0.9)',
             animation: 'countdownPop 0.35s cubic-bezier(0.2, 1.5, 0.4, 1)',
             lineHeight: 1,
           }}>
-            {countdownStep === 0 ? 'GO!' : countdownStep}
+            {countdownStep === 0 ? '🏁' : countdownStep}
           </div>
           <div style={{
-            marginTop: 16,
-            fontSize: 16,
-            color: 'rgba(255,255,255,0.5)',
-            letterSpacing: 3,
-            fontWeight: 600,
+            marginTop: countdownStep === 0 ? 8 : 12,
+            fontSize: countdownStep === 0 ? 28 : 14,
+            color: countdownStep === 0 ? '#ffaa33' : 'rgba(255,220,150,0.6)',
+            letterSpacing: countdownStep === 0 ? 4 : 3,
+            fontWeight: 900,
+            animation: countdownStep === 0 ? 'countdownPop 0.35s ease' : 'none',
           }}>
-            {countdownStep > 0 ? 'GET READY' : 'FLOOR IT!'}
+            {countdownStep > 0 ? 'PRÊT...' : 'PARTEZ !'}
           </div>
         </div>
       )}
@@ -307,23 +323,23 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           border: '1px solid rgba(255,255,255,0.12)',
           textAlign: 'center',
         }}>
-          <div style={{ fontSize: 10, color: '#888', letterSpacing: 2, marginBottom: 6, fontWeight: 700 }}>STAGE</div>
-          {/* Progress bar */}
+          <div style={{ fontSize: 10, color: '#aa6633', letterSpacing: 2, marginBottom: 6, fontWeight: 700 }}>SPÉCIALE</div>
+          {/* Progress bar — sunset orange */}
           <div style={{
             width: '100%', height: 6,
-            background: 'rgba(255,255,255,0.1)',
+            background: 'rgba(255,150,50,0.15)',
             borderRadius: 3, overflow: 'hidden',
             marginBottom: 6,
           }}>
             <div style={{
               width: `${Math.min(stageProgress * 100, 100).toFixed(1)}%`,
               height: '100%',
-              background: stageProgress > 0.9 ? '#ffd700' : '#00cc66',
+              background: stageProgress > 0.9 ? '#ffd700' : 'linear-gradient(90deg, #cc4400, #ff8833)',
               borderRadius: 3,
               transition: 'width 0.2s, background 0.3s',
             }} />
           </div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1 }}>
+          <div style={{ fontSize: 20, fontWeight: 900, color: '#ffcc88', lineHeight: 1 }}>
             {Math.min(Math.round(stageProgress * 100), 100)}<span style={{ fontSize: 12, opacity: 0.5 }}>%</span>
           </div>
         </div>
