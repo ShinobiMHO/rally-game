@@ -110,11 +110,11 @@ export class GameEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Scene
-    const skyColor = new THREE.Color(mapConfig.groundColor).lerp(new THREE.Color(0x87ceeb), 0.35);
+    // Scene — forest sky (grey-green overcast)
+    const skyColor = new THREE.Color(0x6a8a5a).lerp(new THREE.Color(0x9ab0a0), 0.4);
     this.scene = new THREE.Scene();
     this.scene.background = skyColor;
-    this.scene.fog = new THREE.Fog(skyColor, 100, 280);
+    this.scene.fog = new THREE.Fog(skyColor, 60, 200); // closer fog = denser forest feel
 
     // Camera
     this.camera = new THREE.PerspectiveCamera(52, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
@@ -389,22 +389,33 @@ export class GameEngine {
   }
 
   private buildBarriers() {
-    const step = 4;
-    const barrierH = 1.4;
-    const mat1 = new THREE.MeshLambertMaterial({ color: this.mapConfig.barrierColor });
-    const mat2 = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    // Wooden log barriers — rally forest style
+    const step = 5;
+    const logMat = new THREE.MeshLambertMaterial({ color: 0x7a5228 }); // wood
+    const darkLogMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 }); // darker log
 
     for (let i = 0; i < this.trackPoints.length - 1; i += step) {
       const tp = this.trackPoints[i];
       const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
-      const alternate = Math.floor(i / step) % 4 < 2;
+      const alternate = Math.floor(i / step) % 3 !== 0;
       for (const side of [tp.left, tp.right]) {
-        const geo = new THREE.BoxGeometry(0.45, barrierH, step * 0.85);
-        const barrier = new THREE.Mesh(geo, alternate ? mat1 : mat2);
-        barrier.position.set(side.x, barrierH / 2, side.z);
-        barrier.rotation.y = angle;
-        barrier.castShadow = true;
-        this.scene.add(barrier);
+        // Horizontal log
+        const logGeo = new THREE.CylinderGeometry(0.22, 0.25, step * 0.9, 6);
+        const log = new THREE.Mesh(logGeo, alternate ? logMat : darkLogMat);
+        log.rotation.z = Math.PI / 2;
+        log.rotation.y = angle;
+        log.position.set(side.x, 0.28, side.z);
+        log.castShadow = true;
+        this.scene.add(log);
+
+        // Stake holding the log
+        if (Math.floor(i / step) % 2 === 0) {
+          const stakeGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.9, 5);
+          const stake = new THREE.Mesh(stakeGeo, darkLogMat);
+          stake.position.set(side.x, 0.45, side.z);
+          stake.castShadow = true;
+          this.scene.add(stake);
+        }
       }
     }
   }
@@ -473,59 +484,90 @@ export class GameEngine {
 
   private buildEnvironment() {
     const treeMat = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
+    const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 }); // slightly lighter variant
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
+    const bushMat = new THREE.MeshLambertMaterial({ color: 0x2d5e0e });
     const rng = this.seededRng(42);
 
-    for (let i = 0; i < 100; i++) {
-      const x = (rng() - 0.5) * 350;
-      const z = (rng() - 0.5) * 350;
+    // ── Dense forest trees — 300 trees ──
+    for (let i = 0; i < 300; i++) {
+      const x = (rng() - 0.5) * 500;
+      const z = (rng() - 0.5) * 600;
       const pos = new THREE.Vector3(x, 0, z);
 
+      // Keep clear of the road
       let tooClose = false;
       for (const tp of this.trackPoints) {
-        if (pos.distanceTo(tp.center) < this.mapConfig.trackWidth * 2.2) {
+        if (pos.distanceTo(tp.center) < this.mapConfig.trackWidth * 1.8) {
           tooClose = true;
           break;
         }
       }
       if (tooClose) continue;
 
-      const h = 4 + rng() * 6;
-      const r = 1.5 + rng() * 2;
+      const h = 5 + rng() * 9;
+      const r = 1.8 + rng() * 2.5;
       const sides = Math.floor(4 + rng() * 3);
+      const mat = rng() > 0.4 ? treeMat : treeMat2;
 
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.35, h * 0.45, 5), trunkMat);
-      trunk.position.y = h * 0.225;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, h * 0.42, 5), trunkMat);
+      trunk.position.y = h * 0.21;
       trunk.castShadow = true;
 
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.72, sides), treeMat);
-      crown.position.y = h * 0.58;
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.75, sides), mat);
+      crown.position.y = h * 0.56;
       crown.castShadow = true;
+
+      // Second cone layer for rounder pine look
+      const crown2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.72, h * 0.5, sides), mat);
+      crown2.position.y = h * 0.68;
 
       const tree = new THREE.Group();
       tree.add(trunk);
       tree.add(crown);
+      tree.add(crown2);
       tree.position.set(x, 0, z);
       tree.rotation.y = rng() * Math.PI * 2;
       this.scene.add(tree);
     }
 
-    // Some rocks for variety
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-    for (let i = 0; i < 40; i++) {
-      const x = (rng() - 0.5) * 300;
-      const z = (rng() - 0.5) * 300;
+    // ── Bushes/ferns near the track edges ──
+    for (let i = 0; i < 150; i++) {
+      const x = (rng() - 0.5) * 400;
+      const z = (rng() - 0.5) * 500;
+      const pos = new THREE.Vector3(x, 0, z);
+
+      let minDist = Infinity;
+      for (const tp of this.trackPoints) {
+        const d = pos.distanceTo(tp.center);
+        if (d < minDist) minDist = d;
+      }
+      // Only place bushes close-ish to the track but not on it
+      if (minDist < this.mapConfig.trackWidth * 0.95 || minDist > this.mapConfig.trackWidth * 4) continue;
+
+      const r = 0.6 + rng() * 1.2;
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(r, 5, 4), bushMat);
+      bush.position.set(x, r * 0.5, z);
+      bush.scale.y = 0.55;
+      this.scene.add(bush);
+    }
+
+    // ── Rocks ──
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x707565 });
+    for (let i = 0; i < 60; i++) {
+      const x = (rng() - 0.5) * 400;
+      const z = (rng() - 0.5) * 500;
       let tooClose = false;
       for (const tp of this.trackPoints) {
-        if (new THREE.Vector3(x, 0, z).distanceTo(tp.center) < this.mapConfig.trackWidth * 2) {
+        if (new THREE.Vector3(x, 0, z).distanceTo(tp.center) < this.mapConfig.trackWidth * 1.6) {
           tooClose = true;
           break;
         }
       }
       if (tooClose) continue;
-      const s = 0.5 + rng() * 2;
+      const s = 0.4 + rng() * 1.8;
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
-      rock.position.set(x, s * 0.4, z);
+      rock.position.set(x, s * 0.35, z);
       rock.rotation.set(rng(), rng(), rng());
       rock.castShadow = true;
       this.scene.add(rock);
@@ -642,20 +684,23 @@ export class GameEngine {
   // ─────────────── Lights ───────────────
 
   private setupLights() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    // Forest ambient — slightly green-tinted, softer
+    this.scene.add(new THREE.AmbientLight(0xaac890, 0.7));
 
-    const sun = new THREE.DirectionalLight(0xfff4e0, 1.3);
-    sun.position.set(40, 100, 40);
+    // Sun filtering through canopy — warm but diffused
+    const sun = new THREE.DirectionalLight(0xe8f0c0, 1.0);
+    sun.position.set(30, 80, 60);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 600;
+    sun.shadow.camera.far = 500;
     sun.shadow.camera.left = sun.shadow.camera.bottom = -200;
     sun.shadow.camera.right = sun.shadow.camera.top = 200;
     this.scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0x8899ff, 0.25);
-    fill.position.set(-40, 30, -40);
+    // Cool fill from opposite side (sky reflection)
+    const fill = new THREE.DirectionalLight(0x7a9e78, 0.35);
+    fill.position.set(-40, 20, -40);
     this.scene.add(fill);
   }
 

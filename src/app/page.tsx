@@ -4,18 +4,19 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import NicknameScreen from '@/components/NicknameScreen';
 import CarSelector from '@/components/CarSelector';
-import MapSelector from '@/components/MapSelector';
 
 // Dynamic import for Three.js component (no SSR)
 const GameCanvas = dynamic(() => import('@/components/GameCanvas'), { ssr: false });
 
-type Phase = 'nickname' | 'carSelect' | 'mapSelect' | 'racing';
+// Single map — Forêt de Bretagne (id 0)
+const MAP_ID = 0;
+
+type Phase = 'nickname' | 'carSelect' | 'racing';
 
 export default function Home() {
   const [phase, setPhase] = useState<Phase>('nickname');
   const [nickname, setNickname] = useState('');
   const [selectedCar, setSelectedCar] = useState(0);
-  const [selectedMap, setSelectedMap] = useState(0);
 
   const handleNickname = (nick: string) => {
     setNickname(nick);
@@ -24,11 +25,6 @@ export default function Home() {
 
   const handleCar = (carId: number) => {
     setSelectedCar(carId);
-    setPhase('mapSelect');
-  };
-
-  const handleMap = (mapId: number) => {
-    setSelectedMap(mapId);
     setPhase('racing');
   };
 
@@ -36,7 +32,6 @@ export default function Home() {
     setPhase('nickname');
     setNickname('');
     setSelectedCar(0);
-    setSelectedMap(0);
   };
 
   return (
@@ -47,14 +42,11 @@ export default function Home() {
       {phase === 'carSelect' && (
         <CarSelector nickname={nickname} onSelect={handleCar} />
       )}
-      {phase === 'mapSelect' && (
-        <MapSelector onSelect={handleMap} />
-      )}
       {phase === 'racing' && (
         <GameCanvas
           nickname={nickname}
           carId={selectedCar}
-          mapId={selectedMap}
+          mapId={MAP_ID}
           onMenu={handleMenu}
         />
       )}
