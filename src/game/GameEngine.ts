@@ -81,6 +81,10 @@ export class GameEngine {
   // Camera heading — lags behind car, decoupled from car rotation
   private cameraHeading: number = 0;
 
+  // Airborne physics
+  private verticalVel: number = 0;
+  private isAirborne: boolean = false;
+
   private soundCtx: AudioContext | null = null;
 
   private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -117,6 +121,7 @@ export class GameEngine {
 
     this.setupLights();
     this.buildTrack();
+    this.buildSpecialSections();
     this.buildEnvironment();
     this.buildCar();
     this.placeCarAtStart();
@@ -401,6 +406,197 @@ export class GameEngine {
         }
       }
     }
+  }
+
+  // ─────────────── Special Sections: Bridge / Jump / Tunnel ───────────────
+
+  private buildSpecialSections() {
+    this.buildBridge();
+    this.buildJumpRamp();
+    this.buildTunnel();
+  }
+
+  private buildBridge() {
+    // For all track points where y > 9 → add bridge structure below
+    const pillarMat = new THREE.MeshLambertMaterial({ color: 0x909090 }); // concrete
+    const railMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+    const hw = this.mapConfig.trackWidth / 2;
+
+    for (let i = 0; i < this.trackPoints.length; i += 4) {
+      const tp = this.trackPoints[i];
+      if (tp.center.y < 9) continue;
+
+      const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+
+      // Support pillars — one pair every 4 track divisions
+      const pillarH = tp.center.y; // from ground (y=0) to road
+      if (pillarH < 1) continue;
+
+      const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      for (const sign of [-1, 1]) {
+        const pos = tp.center.clone().addScaledVector(perp, sign * (hw - 1));
+        const pillar = new THREE.Mesh(
+          new THREE.BoxGeometry(1.0, pillarH, 1.0),
+          pillarMat
+        );
+        pillar.position.set(pos.x, pillarH / 2, pos.z);
+        pillar.castShadow = true;
+        this.scene.add(pillar);
+      }
+
+      // Guardrail on bridge
+      for (const sign of [-1, 1]) {
+        const pos = tp.left.clone().addScaledVector(perp.clone().multiplyScalar(sign * 0), 0);
+        const sidePos = sign > 0 ? tp.left : tp.right;
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.2, 3.2), railMat);
+        rail.position.set(sidePos.x, tp.center.y + 0.6, sidePos.z);
+        rail.rotation.y = angle;
+        this.scene.add(rail);
+      }
+    }
+
+    // River / valley below bridge
+    const waterMat = new THREE.MeshLambertMaterial({ color: 0x2a6a9a, transparent: true, opacity: 0.85 });
+    for (let i = 0; i < this.trackPoints.length; i++) {
+      const tp = this.trackPoints[i];
+      if (tp.center.y < 10 || i % 8 !== 0) continue;
+      const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+      const water = new THREE.Mesh(new THREE.PlaneGeometry(40, 8), waterMat);
+      water.rotation.x = -Math.PI / 2;
+      water.rotation.z = angle;
+      water.position.set(tp.center.x, 1.5, tp.center.z);
+      this.scene.add(water);
+    }
+  }
+
+  private buildJumpRamp() {
+    // Find the highest point on the track, add a ramp before it
+    let maxY = 0, maxIdx = 0;
+    for (let i = 0; i < this.trackPoints.length; i++) {
+      if (this.trackPoints[i].center.y > maxY) {
+        maxY = this.trackPoints[i].center.y;
+        maxIdx = i;
+      }
+    }
+    if (maxIdx < 2) return;
+
+    const tp = this.trackPoints[maxIdx];
+    const tpBefore = this.trackPoints[Math.max(0, maxIdx - 8)];
+    const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+    const hw = this.mapConfig.trackWidth;
+
+    // Ramp surface — slanted box
+    const rampMat = new THREE.MeshLambertMaterial({ color: 0x6a4820 }); // wood ramp
+    const rampLen = 14;
+    const rampH = tp.center.y - tpBefore.center.y;
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(hw + 2, 0.5, rampLen), rampMat);
+    ramp.position.set(tp.center.x, tp.center.y - 0.5, tp.center.z - rampLen * 0.3);
+    ramp.rotation.y = angle;
+    ramp.castShadow = true;
+    this.scene.add(ramp);
+
+    // Red/white warning stripes on ramp edge
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(hw + 2, 0.55, 0.8), stripeMat);
+    stripe.position.set(tp.center.x, tp.center.y + 0.05, tp.center.z);
+    stripe.rotation.y = angle;
+    this.scene.add(stripe);
+
+    // Arrow signs pointing up before the jump
+    const signMat = new THREE.MeshLambertMaterial({ color: 0xffcc00 });
+    for (const sign of [-1, 1]) {
+      const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const pos = tp.center.clone().addScaledVector(perp, sign * (hw / 2 - 1));
+      const signPost = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.5, 0.2), signMat);
+      signPost.position.set(pos.x, tp.center.y + 1.25, pos.z);
+      this.scene.add(signPost);
+      const arrow = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.15), signMat);
+      arrow.position.set(pos.x, tp.center.y + 2.5, pos.z);
+      this.scene.add(arrow);
+    }
+  }
+
+  private buildTunnel() {
+    // Build tunnel arches from t=0.75 to t=0.92
+    const tStart = 0.75;
+    const tEnd = 0.91;
+    const totalPts = this.trackPoints.length;
+    const idxStart = Math.floor(tStart * totalPts);
+    const idxEnd = Math.floor(tEnd * totalPts);
+    const hw = this.mapConfig.trackWidth / 2 + 1.5;
+    const tunnelH = 6.5;
+    const step = 6; // arch every N points
+
+    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x707070 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+
+    // Tunnel entrance portal
+    this.buildTunnelPortal(this.trackPoints[idxStart], hw, tunnelH, concreteMat, 'ENTRÉE');
+    // Tunnel exit portal
+    this.buildTunnelPortal(this.trackPoints[idxEnd], hw, tunnelH, concreteMat, 'SORTIE');
+
+    for (let i = idxStart; i <= idxEnd; i += step) {
+      const tp = this.trackPoints[i];
+      if (!tp) continue;
+      const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+      const cy = tp.center.y;
+
+      // Left wall
+      const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.7, tunnelH, step * 0.88), concreteMat);
+      leftWall.position.set(tp.left.x, cy + tunnelH / 2, tp.left.z);
+      leftWall.rotation.y = angle;
+      leftWall.castShadow = true;
+      this.scene.add(leftWall);
+
+      // Right wall
+      const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.7, tunnelH, step * 0.88), concreteMat);
+      rightWall.position.set(tp.right.x, cy + tunnelH / 2, tp.right.z);
+      rightWall.rotation.y = angle;
+      rightWall.castShadow = true;
+      this.scene.add(rightWall);
+
+      // Ceiling
+      const ceilGrp = new THREE.Group();
+      ceilGrp.rotation.y = angle;
+      ceilGrp.position.set(tp.center.x, cy + tunnelH, tp.center.z);
+      const ceil = new THREE.Mesh(new THREE.BoxGeometry(this.mapConfig.trackWidth + 2, 0.7, step * 0.88), darkMat);
+      ceilGrp.add(ceil);
+      this.scene.add(ceilGrp);
+
+      // Tunnel lights (every other arch)
+      if (i % (step * 2) === idxStart % (step * 2)) {
+        const light = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.18, 0.18), lightMat);
+        light.position.set(tp.center.x, cy + tunnelH - 0.6, tp.center.z);
+        this.scene.add(light);
+      }
+    }
+  }
+
+  private buildTunnelPortal(tp: TrackPoint, hw: number, tunnelH: number, mat: THREE.MeshLambertMaterial, label: string) {
+    const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+    const cy = tp.center.y;
+    const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+
+    // Left pillar
+    const lPos = tp.center.clone().addScaledVector(perp, -(hw));
+    const lpillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, tunnelH + 1, 1.2), mat);
+    lpillar.position.set(lPos.x, cy + (tunnelH + 1) / 2, lPos.z);
+    this.scene.add(lpillar);
+
+    // Right pillar
+    const rPos = tp.center.clone().addScaledVector(perp, hw);
+    const rpillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, tunnelH + 1, 1.2), mat);
+    rpillar.position.set(rPos.x, cy + (tunnelH + 1) / 2, rPos.z);
+    this.scene.add(rpillar);
+
+    // Top beam
+    const beamGrp = new THREE.Group();
+    beamGrp.rotation.y = angle;
+    beamGrp.position.set(tp.center.x, cy + tunnelH + 1, tp.center.z);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 2.5, 1.2, 1.2), mat);
+    beamGrp.add(beam);
+    this.scene.add(beamGrp);
   }
 
   private buildCheckpoints() {
@@ -977,9 +1173,9 @@ export class GameEngine {
 
     const speedBoost = 0.9 + (carConfig.speed - 1) * 0.18;
     const handlingBoost = 0.7 + (carConfig.handling - 1) * 0.16;
-    const maxSpeed = 28 * speedBoost;
-    const accel = 22 * speedBoost;
-    const brakeForce = 42;   // more aggressive braking
+    const maxSpeed = 24 * speedBoost;   // top speed réduit
+    const accel = 13 * speedBoost;      // accélération bien plus progressive
+    const brakeForce = 44;
     const rollFriction = 5;
     const steerMax = 2.2 * handlingBoost;
     const lateralGrip = 2.5 + (carConfig.handling - 1) * 0.5;
@@ -1044,15 +1240,15 @@ export class GameEngine {
     const maxLateral = maxSpeed * 0.75;
     physics.lateralVel = THREE.MathUtils.clamp(physics.lateralVel, -maxLateral, maxLateral);
 
-    // ── Cornering drag — steering scrubs forward speed ──
-    // The harder you turn, the more speed you lose (tire scrub + load transfer)
-    if (Math.abs(steerInput) > 0.1 && speedRatio > 0.1) {
-      const cornerDrag = Math.abs(steerInput) * speedRatio * 3.5;
+    // ── Cornering drag — très sensible, perte de vitesse réelle en virage ──
+    if (Math.abs(steerInput) > 0.05 && speedRatio > 0.05) {
+      // Drag quadratique : plus on va vite + plus on braque, plus on freine
+      const cornerDrag = Math.abs(steerInput) * speedRatio * speedRatio * 22;
       physics.speed -= Math.sign(physics.speed) * cornerDrag * dt;
     }
 
-    // ── Lateral speed also bleeds into forward speed loss ──
-    const lateralScrub = Math.abs(physics.lateralVel) * 0.06;
+    // ── Lateral scrub scrubs forward speed too ──
+    const lateralScrub = Math.abs(physics.lateralVel) * 0.18;
     physics.speed -= Math.sign(physics.speed) * lateralScrub * dt;
 
     const fwd = new THREE.Vector3(Math.sin(physics.heading), 0, Math.cos(physics.heading));
@@ -1062,7 +1258,7 @@ export class GameEngine {
 
     physics.position.addScaledVector(vel, dt);
 
-    // ── Follow road elevation ──
+    // ── Follow road elevation + airborne physics ──
     if (this.spline) {
       const pos2D = new THREE.Vector2(physics.position.x, physics.position.z);
       const closestT = this.findClosestT(pos2D);
@@ -1070,12 +1266,37 @@ export class GameEngine {
       const closestPt2D = new THREE.Vector2(closestPt.x, closestPt.z);
       const distFromCenter = pos2D.distanceTo(closestPt2D);
       const halfWidth = this.mapConfig.trackWidth * 0.5;
+      const targetY = closestPt.y + 0.52;
 
-      // Road Y following
-      physics.position.y = THREE.MathUtils.lerp(physics.position.y, closestPt.y + 0.52, 0.25);
+      if (this.isAirborne) {
+        // ── En l'air : gravité ──
+        this.verticalVel -= 30 * dt;
+        physics.position.y += this.verticalVel * dt;
 
-      // Boundary push
-      if (distFromCenter > halfWidth) {
+        // Atterrissage
+        if (physics.position.y <= targetY) {
+          physics.position.y = targetY;
+          const impact = Math.abs(this.verticalVel);
+          // Perte de vitesse à l'impact proportionnelle à la hauteur de chute
+          if (impact > 4) physics.speed *= Math.max(0.65, 1 - impact * 0.028);
+          this.verticalVel = 0;
+          this.isAirborne = false;
+        }
+      } else {
+        const prevTargetY = closestPt.y; // road center Y
+        // Détecter décollage : route qui chute brusquement devant la voiture
+        const yDrop = prevTargetY - (physics.position.y - 0.52);
+        if (yDrop < -3.0 && Math.abs(physics.speed) > 10) {
+          // Lancé dans l'air !
+          this.isAirborne = true;
+          this.verticalVel = Math.abs(physics.speed) * 0.14; // élan vertical
+        } else {
+          physics.position.y = THREE.MathUtils.lerp(physics.position.y, targetY, 0.2);
+        }
+      }
+
+      // ── Boundary push (sauf en l'air) ──
+      if (!this.isAirborne && distFromCenter > halfWidth) {
         const pushDir = pos2D.clone().sub(closestPt2D).normalize();
         const overlap = distFromCenter - halfWidth;
         physics.position.x -= pushDir.x * (overlap + 0.1);
@@ -1208,8 +1429,7 @@ export class GameEngine {
     const speedAbs = Math.abs(this.physics.speed);
 
     // Camera heading lags behind car heading — doesn't snap to turns
-    // Slow at low speed, slightly faster at high speed
-    const headingLerp = 0.03 + speedAbs * 0.0015;
+    const headingLerp = 0.07 + speedAbs * 0.003;
     // Shortest-path angle lerp (avoid ±π wrap glitch)
     let diff = this.physics.heading - this.cameraHeading;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1289,6 +1509,8 @@ export class GameEngine {
     this.lapCheckpointIndex = 0;
     this.input.forward = false;
     this.input.backward = false;
+    this.isAirborne = false;
+    this.verticalVel = 0;
     this.placeCarAtStart();
     this.particles.forEach(p => this.scene.remove(p));
     this.particles = [];
