@@ -1896,9 +1896,9 @@ export class GameEngine {
     const accel = 16 * speedBoost;
     const brakeForce = 42;
     const rollFriction = 5;
-    const steerMax = 2.6 * handlingBoost;        // braquage plus vif
-    const lateralGrip = 2.8 + (carConfig.handling - 1) * 0.5;
-    const driftAccum = 7 + (5 - carConfig.handling) * 1.0;  // drift plus généreux
+    const steerMax = 2.8 * handlingBoost;
+    const lateralGrip = 1.4 + (carConfig.handling - 1) * 0.3;  // terre : peu de grip
+    const driftAccum = 11 + (5 - carConfig.handling) * 1.2;    // arrière part vite
 
     const speedRatio = Math.abs(physics.speed) / maxSpeed;
 
@@ -1955,8 +1955,15 @@ export class GameEngine {
       physics.lateralVel += -steerInput * driftAccum * driftMultiplier * speedRatio * dt;
     }
 
+    // Terre glissante : la dérive se dissipe lentement (surface loose)
     physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, effectiveLateralGrip * dt);
-    const maxLateral = maxSpeed * 0.75;
+
+    // Imperfections de surface — légère perturbation latérale aléatoire à vitesse
+    if (!isHandbrake && speedRatio > 0.4) {
+      physics.lateralVel += (Math.random() - 0.5) * speedRatio * 0.4;
+    }
+
+    const maxLateral = maxSpeed * 0.85;
     physics.lateralVel = THREE.MathUtils.clamp(physics.lateralVel, -maxLateral, maxLateral);
 
     // ── Cornering drag — très sensible, perte de vitesse réelle en virage ──
@@ -2167,8 +2174,11 @@ export class GameEngine {
   private camShake: number = 0; // landing impact shake
 
   private updateCamera(dt: number) {
-    // Cible ultra-lissée — élimine tout micro-jitter de physics.position
-    this.smoothCamTarget.lerp(this.physics.position, 0.04);
+    // XZ suit la voiture vite, Y lissé pour éviter le jitter vertical
+    const p = this.physics.position;
+    this.smoothCamTarget.x = THREE.MathUtils.lerp(this.smoothCamTarget.x, p.x, 0.18);
+    this.smoothCamTarget.z = THREE.MathUtils.lerp(this.smoothCamTarget.z, p.z, 0.18);
+    this.smoothCamTarget.y = THREE.MathUtils.lerp(this.smoothCamTarget.y, p.y, 0.08);
     const target = this.smoothCamTarget.clone();
 
     // Heading découplé, lerp constant
