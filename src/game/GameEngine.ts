@@ -80,6 +80,7 @@ export class GameEngine {
 
   // Camera heading — lags behind car, decoupled from car rotation
   private cameraHeading: number = 0;
+  private smoothCamTarget: THREE.Vector3 = new THREE.Vector3();
 
   // Airborne physics
   private verticalVel: number = 0;
@@ -2044,7 +2045,7 @@ export class GameEngine {
       const t = this.findClosestT(new THREE.Vector2(physics.position.x, physics.position.z));
       const tangent3D = this.spline.getTangent(t);
       const pitchAngle = -Math.atan2(tangent3D.y, Math.sqrt(tangent3D.x * tangent3D.x + tangent3D.z * tangent3D.z));
-      this.carGroup.rotation.x = THREE.MathUtils.lerp(this.carGroup.rotation.x, pitchAngle, 0.15);
+      this.carGroup.rotation.x = THREE.MathUtils.lerp(this.carGroup.rotation.x, pitchAngle, 0.05);
     } else {
       this.carGroup.rotation.x = THREE.MathUtils.lerp(this.carGroup.rotation.x, 0, 0.15);
     }
@@ -2166,35 +2167,31 @@ export class GameEngine {
   private camShake: number = 0; // landing impact shake
 
   private updateCamera(dt: number) {
-    const target = this.physics.position.clone();
-    const speedAbs = Math.abs(this.physics.speed);
+    // Cible ultra-lissée — élimine tout micro-jitter de physics.position
+    this.smoothCamTarget.lerp(this.physics.position, 0.04);
+    const target = this.smoothCamTarget.clone();
 
-    // Camera heading lags behind car heading
-    const headingLerp = 0.07 + speedAbs * 0.003;
+    // Heading découplé, lerp constant
     let diff = this.physics.heading - this.cameraHeading;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    this.cameraHeading += diff * headingLerp;
+    this.cameraHeading += diff * 0.06;
 
-    // En l'air : caméra recule + monte pour voir l'arc du saut
-    const airBonusH = this.isAirborne ? Math.max(0, this.verticalVel * 0.5) + 3 : 0;
+    const airBonusH = this.isAirborne ? 3 : 0;
     const airBonusBehind = this.isAirborne ? 4 : 0;
 
-    const height = 2.8 + speedAbs * 0.025 + airBonusH;
-    const behind = 8 + speedAbs * 0.06 + airBonusBehind;  // caméra plus proche
+    // Hauteur et recul constants — pas liés à la vitesse
+    const height = 3.0 + airBonusH;
+    const behind = 9.0 + airBonusBehind;
 
-    const offset = new THREE.Vector3(
+    const desiredPos = target.clone().add(new THREE.Vector3(
       -Math.sin(this.cameraHeading) * behind,
       height,
       -Math.cos(this.cameraHeading) * behind
-    );
+    ));
 
-    this.camera.position.lerp(target.clone().add(offset), 0.06);
-    // lookAt lissé aussi — évite les sauts brusques
-    const lookTarget = new THREE.Vector3(target.x, target.y + 1.2, target.z);
-    const currentLook = this.camera.position.clone().add(this.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
-    currentLook.lerp(lookTarget, 0.12);
-    this.camera.lookAt(lookTarget);
+    this.camera.position.lerp(desiredPos, 0.04);
+    this.camera.lookAt(target.x, target.y + 1.0, target.z);
   }
 
   // ─────────────── Particles (dirt spray) ───────────────
