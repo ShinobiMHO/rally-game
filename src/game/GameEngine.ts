@@ -2028,14 +2028,17 @@ export class GameEngine {
     }
 
     this.particles = this.particles.filter(p => {
-      const ud = p.userData as { spawnTime: number; lifetime: number; vy: number };
+      const ud = p.userData as { spawnTime: number; lifetime: number; vy: number; vx: number; vz: number };
       const age = now - ud.spawnTime;
       if (age > ud.lifetime) { this.scene.remove(p); return false; }
+      const t = age / ud.lifetime;
       const mat = p.material as THREE.PointsMaterial;
-      mat.opacity = (1 - age / ud.lifetime) * 0.8;
+      mat.opacity = (1 - t * t) * 0.8;
+      mat.size = mat.size * 0.998; // shrink slightly
       p.position.y += ud.vy * dt;
-      p.position.x += (Math.random() - 0.5) * 0.15;
-      p.position.z += (Math.random() - 0.5) * 0.15;
+      ud.vy -= 8 * dt; // gravity
+      p.position.x += (ud.vx + (Math.random() - 0.5)) * dt;
+      p.position.z += (ud.vz + (Math.random() - 0.5)) * dt;
       return true;
     });
   }
@@ -2062,18 +2065,37 @@ export class GameEngine {
   }
 
   private emitDirt(color: number, size: number, lifetime: number) {
-    const n = 12;
+    const n = 14;
+    // Spawn derrière les roues arrière (pas au centre de la voiture)
+    const behindDir = new THREE.Vector3(Math.sin(this.physics.heading), 0, Math.cos(this.physics.heading));
+    const spawnBase = this.physics.position.clone().addScaledVector(behindDir, 2.5);
+
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      pos[i * 3] = this.physics.position.x + (Math.random() - 0.5) * 3;
-      pos[i * 3 + 1] = this.physics.position.y - 0.3;
-      pos[i * 3 + 2] = this.physics.position.z + (Math.random() - 0.5) * 3;
+      const wheelSide = (Math.random() - 0.5) * 5;
+      const wheelFwd  = (Math.random() - 0.3) * 4;
+      const perpDir = new THREE.Vector3(Math.cos(this.physics.heading), 0, -Math.sin(this.physics.heading));
+      const p = spawnBase.clone()
+        .addScaledVector(perpDir, wheelSide)
+        .addScaledVector(behindDir, wheelFwd);
+      pos[i * 3]     = p.x;
+      pos[i * 3 + 1] = p.y - 0.1;
+      pos[i * 3 + 2] = p.z;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({ color, size, transparent: true, opacity: 0.8, depthWrite: false });
+    // Taille variable selon dérive
+    const isDrift = size > 2.5;
+    const particleSize = isDrift ? 2.8 + Math.random() * 1.2 : 1.6 + Math.random() * 0.8;
+    const mat = new THREE.PointsMaterial({
+      color, size: particleSize, transparent: true, opacity: 0.75, depthWrite: false,
+      sizeAttenuation: true,
+    });
     const pts = new THREE.Points(geo, mat);
-    pts.userData = { spawnTime: performance.now(), lifetime, vy: 2.0 };
+    // Vélocité initiale — projette vers le haut + vers l'extérieur
+    const vx = (Math.random() - 0.5) * 5;
+    const vz = (Math.random() - 0.5) * 5;
+    pts.userData = { spawnTime: performance.now(), lifetime, vy: 3.5 + Math.random() * 2, vx, vz };
     this.scene.add(pts);
     this.particles.push(pts);
   }
