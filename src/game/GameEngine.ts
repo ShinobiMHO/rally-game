@@ -395,8 +395,8 @@ export class GameEngine {
     }
 
     // Portique orange/blanc
-    const gateWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const gateOrange = new THREE.MeshLambertMaterial({ color: 0xff6600 });
+    const gateWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.1 });
+    const gateOrange = new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.5, metalness: 0.05 });
     const perpS = new THREE.Vector3(Math.cos(startAngle), 0, Math.sin(startAngle));
     const sLpos = startTp.center.clone().addScaledVector(perpS, hw / 2 + 1);
     const sRpos = startTp.center.clone().addScaledVector(perpS, -hw / 2 - 1);
@@ -450,8 +450,8 @@ export class GameEngine {
     }
 
     // Finish gantry (red)
-    const gMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
-    const gRedMat = new THREE.MeshLambertMaterial({ color: 0xff2222 });
+    const gMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4, metalness: 0.3 });
+    const gRedMat = new THREE.MeshStandardMaterial({ color: 0xff2222, roughness: 0.4, metalness: 0.05 });
     const height = 6;
     const perp = new THREE.Vector3(Math.cos(finishAngle), 0, Math.sin(finishAngle));
     const fL = finishTp.center.clone().addScaledVector(perp, hw / 2 + 0.5);
@@ -510,8 +510,8 @@ export class GameEngine {
 
   private buildBridge() {
     // For all track points where y > 9 → add bridge structure below
-    const pillarMat = new THREE.MeshLambertMaterial({ color: 0x909090 }); // concrete
-    const railMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x909090, roughness: 0.9, metalness: 0.05 }); // concrete
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.3, metalness: 0.8 });
     const hw = this.mapConfig.trackWidth / 2;
 
     for (let i = 0; i < this.trackPoints.length; i += 4) {
@@ -578,7 +578,7 @@ export class GameEngine {
     const hw = this.mapConfig.trackWidth;
 
     // Ramp surface — slanted box
-    const rampMat = new THREE.MeshLambertMaterial({ color: 0x6a4820 }); // wood ramp
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0x6a4820, roughness: 0.9, metalness: 0 }); // wood ramp
     const rampLen = 14;
     const rampH = tp.center.y - tpBefore.center.y;
     const ramp = new THREE.Mesh(new THREE.BoxGeometry(hw + 2, 0.5, rampLen), rampMat);
@@ -619,8 +619,8 @@ export class GameEngine {
     const tunnelH = 6.5;
     const step = 6; // arch every N points
 
-    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x707070 });
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x707070, roughness: 0.95, metalness: 0.05 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 1.0, metalness: 0 });
     const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
 
     // Tunnel entrance portal
@@ -672,7 +672,7 @@ export class GameEngine {
     }
   }
 
-  private buildTunnelPortal(tp: TrackPoint, hw: number, tunnelH: number, mat: THREE.MeshLambertMaterial, label: string) {
+  private buildTunnelPortal(tp: TrackPoint, hw: number, tunnelH: number, mat: THREE.MeshStandardMaterial | THREE.MeshLambertMaterial, label: string) {
     const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
     const cy = tp.center.y;
     const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
@@ -706,7 +706,7 @@ export class GameEngine {
 
     const rockTexCave = this.loadTex('/textures/rock.jpg', 1, 1);
     const rockMat  = new THREE.MeshStandardMaterial({ map: rockTexCave, roughness: 0.9, metalness: 0, color: 0x888880 });
-    const mossMat  = new THREE.MeshLambertMaterial({ color: 0x1a3a0a });
+    const mossMat  = new THREE.MeshStandardMaterial({ color: 0x1a3a0a, roughness: 1.0, metalness: 0 });
     const hw = this.mapConfig.trackWidth / 2 + 1;
 
     // Entrée = premier point de la grotte (transition depuis la surface)
@@ -984,8 +984,8 @@ export class GameEngine {
     }
 
     // ── Bouleaux (birch trees) — 80 trunks blancs ──
-    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xddddcc });
-    const birchCrownMat = new THREE.MeshLambertMaterial({ color: 0x88cc44 });
+    const birchTrunkMat = new THREE.MeshStandardMaterial({ color: 0xddddcc, roughness: 0.8, metalness: 0 });
+    const birchCrownMat = new THREE.MeshStandardMaterial({ color: 0x88cc44, roughness: 1.0, metalness: 0 });
 
     for (let i = 0; i < 50; i++) {
       const x = (rng() - 0.5) * 600;
@@ -1040,7 +1040,7 @@ export class GameEngine {
     }
 
     // ── Undergrowth / bushes — close to track edges ──
-    const bushMat = new THREE.MeshLambertMaterial({ color: 0x2d5e0e });
+    const bushMat = new THREE.MeshStandardMaterial({ color: 0x2d5e0e, roughness: 1.0, metalness: 0 });
     const bushMat2 = new THREE.MeshLambertMaterial({ color: 0x3a6e14 });
     for (let i = 0; i < 200; i++) {
       const x = (rng() - 0.5) * 500;
@@ -1067,6 +1067,7 @@ export class GameEngine {
     this.buildTallGrass(rng);
     this.buildRallySigns(rng);
     this.buildMarshalFlags(rng);
+    this.buildCenterLine();
     // buildLeafShadows supprimé — trop de draw calls
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
@@ -1365,6 +1366,22 @@ export class GameEngine {
       patch.rotation.z = rngL() * Math.PI;
       patch.position.set(x, y, z);
       this.scene.add(patch);
+    }
+  }
+
+  private buildCenterLine() {
+    // Tirets blancs au centre de la route (style rallye)
+    const dashMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false });
+    const step = 12;
+    for (let i = 5; i < this.trackPoints.length - 5; i += step) {
+      const tp = this.trackPoints[i];
+      const tangent = tp.tangent.clone().normalize();
+      const angle = Math.atan2(tangent.x, tangent.z);
+      const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.35, step * 0.55), dashMat);
+      dash.rotation.x = -Math.PI / 2;
+      dash.rotation.z = angle;
+      dash.position.set(tp.center.x, tp.center.y + 0.05, tp.center.z);
+      this.scene.add(dash);
     }
   }
 
