@@ -2004,7 +2004,6 @@ export class GameEngine {
           // Son d'impact + camera shake
           if (impact > 5) {
             this.playSound(120, 0.18, 'sawtooth', 0.12);
-            this.camShake = Math.min(impact * 0.3, 2.5);
           }
           this.verticalVel = 0;
           this.isAirborne = false;
@@ -2184,18 +2183,18 @@ export class GameEngine {
     const height = 2.8 + speedAbs * 0.025 + airBonusH;
     const behind = 8 + speedAbs * 0.06 + airBonusBehind;  // caméra plus proche
 
-    // Decay camera shake
-    this.camShake *= 0.88;
-
-    const shake = this.camShake;
     const offset = new THREE.Vector3(
-      -Math.sin(this.cameraHeading) * behind + (Math.random() - 0.5) * shake,
-      height + (Math.random() - 0.5) * shake * 0.5,
-      -Math.cos(this.cameraHeading) * behind + (Math.random() - 0.5) * shake * 0.3
+      -Math.sin(this.cameraHeading) * behind,
+      height,
+      -Math.cos(this.cameraHeading) * behind
     );
 
-    this.camera.position.lerp(target.clone().add(offset), 0.10);
-    this.camera.lookAt(target.x, target.y + 1.0, target.z);
+    this.camera.position.lerp(target.clone().add(offset), 0.06);
+    // lookAt lissé aussi — évite les sauts brusques
+    const lookTarget = new THREE.Vector3(target.x, target.y + 1.2, target.z);
+    const currentLook = this.camera.position.clone().add(this.camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10));
+    currentLook.lerp(lookTarget, 0.12);
+    this.camera.lookAt(lookTarget);
   }
 
   // ─────────────── Particles (dirt spray) ───────────────
