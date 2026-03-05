@@ -372,31 +372,52 @@ export class GameEngine {
   private buildStartFinishLine() {
     const hw = this.mapConfig.trackWidth;
 
-    // ── START LINE (green banner) ──
+    // ── START — portique WRC style (orange/blanc) ──
     const startTp = this.trackPoints[0];
     const sy = startTp.center.y;
     const startAngle = Math.atan2(startTp.tangent.x, startTp.tangent.z);
-    const startMat = new THREE.MeshBasicMaterial({ color: 0x00cc44 });
-    const startLine = new THREE.Mesh(new THREE.PlaneGeometry(hw, 1.5), startMat);
+
+    // Ligne de départ damier blanc/rouge
+    const startBaseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const startLine = new THREE.Mesh(new THREE.PlaneGeometry(hw, 2.0), startBaseMat);
     startLine.rotation.x = -Math.PI / 2;
     startLine.rotation.z = startAngle;
     startLine.position.set(startTp.center.x, sy + 0.03, startTp.center.z);
     this.scene.add(startLine);
+    const sn = 6;
+    const scw = hw / sn;
+    for (let ii = 0; ii < sn; ii++) {
+      if (ii % 2 !== 0) continue;
+      const sc = new THREE.Mesh(new THREE.PlaneGeometry(scw, 2.0),
+        new THREE.MeshBasicMaterial({ color: 0xff4400 }));
+      sc.rotation.x = -Math.PI / 2;
+      sc.rotation.z = startAngle;
+      const spa = startAngle + Math.PI / 2;
+      const soff = (ii - sn / 2 + 0.5) * scw;
+      sc.position.set(startTp.center.x + Math.cos(spa) * soff, sy + 0.04, startTp.center.z + Math.sin(spa) * soff);
+      this.scene.add(sc);
+    }
 
-    // Start arch
-    const archMat = new THREE.MeshLambertMaterial({ color: 0x00aa33 });
-    const perp0 = new THREE.Vector3(Math.cos(startAngle), 0, Math.sin(startAngle));
-    const sL = startTp.center.clone().addScaledVector(perp0, hw / 2 + 0.5);
-    const sR = startTp.center.clone().addScaledVector(perp0, -hw / 2 - 0.5);
-    for (const pos of [sL, sR]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 0.5), archMat);
-      post.position.set(pos.x, sy + 2.5, pos.z);
+    // Portique orange/blanc
+    const gateWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const gateOrange = new THREE.MeshLambertMaterial({ color: 0xff6600 });
+    const perpS = new THREE.Vector3(Math.cos(startAngle), 0, Math.sin(startAngle));
+    const sLpos = startTp.center.clone().addScaledVector(perpS, hw / 2 + 1);
+    const sRpos = startTp.center.clone().addScaledVector(perpS, -hw / 2 - 1);
+    for (const pos of [sLpos, sRpos]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 7, 8), gateOrange);
+      post.position.set(pos.x, sy + 3.5, pos.z);
       this.scene.add(post);
     }
-    const startBeam = new THREE.Mesh(new THREE.BoxGeometry(hw + 1.5, 0.5, 0.5), archMat);
-    startBeam.position.set(startTp.center.x, sy + 5, startTp.center.z);
-    startBeam.rotation.y = startAngle;
-    this.scene.add(startBeam);
+    const startBeamTop = new THREE.Mesh(new THREE.BoxGeometry(hw + 3, 0.7, 0.7), gateOrange);
+    startBeamTop.position.set(startTp.center.x, sy + 7.1, startTp.center.z);
+    startBeamTop.rotation.y = startAngle;
+    this.scene.add(startBeamTop);
+    const startBanner = new THREE.Mesh(new THREE.BoxGeometry(hw * 0.7, 1.0, 0.12),
+      new THREE.MeshBasicMaterial({ color: 0xffdd00 }));
+    startBanner.position.set(startTp.center.x, sy + 6.6, startTp.center.z);
+    startBanner.rotation.y = startAngle;
+    this.scene.add(startBanner);
 
     // ── FINISH LINE ──
     const finishTp = this.trackPoints[this.trackPoints.length - 1];
@@ -877,6 +898,7 @@ export class GameEngine {
 
     // ── Lakes ──
     this.buildLakes(rng);
+    this.buildTallGrass(rng);
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
     const fernMat = new THREE.MeshLambertMaterial({ color: 0x2d6611 });
@@ -1117,6 +1139,51 @@ export class GameEngine {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
+  }
+
+  private buildTallGrass(rng: () => number) {
+    // Herbe haute en touffes juste derrière les rondins — style spéciale WRC
+    const grassColors = [
+      new THREE.MeshBasicMaterial({ color: 0x2d5a0a, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0x3d7010, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0x1e4006, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0x4a8a18, side: THREE.DoubleSide }),
+    ];
+    const rngG = this.seededRng(631);
+    const hw = this.mapConfig.trackWidth / 2;
+
+    for (let i = 0; i < this.trackPoints.length - 1; i += 4) {
+      const tp = this.trackPoints[i];
+      const tangent = tp.tangent.clone().normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+
+      for (const side of [-1, 1]) {
+        const numTufts = 2 + Math.floor(rngG() * 3);
+        for (let k = 0; k < numTufts; k++) {
+          const dist = hw * (1.05 + rngG() * 0.6);
+          const fwd = (rngG() - 0.5) * 6;
+          const pos = tp.center.clone()
+            .addScaledVector(normal, side * dist)
+            .addScaledVector(tangent, fwd);
+          const h = 0.6 + rngG() * 1.2;
+          const w = 0.4 + rngG() * 0.8;
+          const mat = grassColors[Math.floor(rngG() * grassColors.length)];
+
+          // Touffe = 2-3 quads croisés, légèrement inclinés
+          const group = new THREE.Group();
+          group.position.set(pos.x, tp.center.y + 0.02, pos.z);
+          for (let a = 0; a < 3; a++) {
+            const blade = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+            blade.rotation.y = (a / 3) * Math.PI;
+            blade.rotation.x = (rngG() - 0.5) * 0.3; // légère inclinaison
+            blade.position.y = h * 0.5;
+            group.add(blade);
+          }
+          group.rotation.y = rngG() * Math.PI * 2;
+          this.scene.add(group);
+        }
+      }
+    }
   }
 
   private buildLakes(rng: () => number) {
