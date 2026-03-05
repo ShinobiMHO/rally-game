@@ -1734,9 +1734,9 @@ export class GameEngine {
 
     const speedBoost = 0.9 + (carConfig.speed - 1) * 0.18;
     const handlingBoost = 0.7 + (carConfig.handling - 1) * 0.16;
-    const maxSpeed = 17 * speedBoost;   // vitesse max réduite
-    const accel = 9 * speedBoost;       // accélération plus douce
-    const brakeForce = 32;
+    const maxSpeed = 28 * speedBoost;
+    const accel = 16 * speedBoost;
+    const brakeForce = 42;
     const rollFriction = 5;
     const steerMax = 2.6 * handlingBoost;        // braquage plus vif
     const lateralGrip = 2.8 + (carConfig.handling - 1) * 0.5;

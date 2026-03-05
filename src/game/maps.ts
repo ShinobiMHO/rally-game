@@ -16,7 +16,7 @@ export const MAP_CONFIGS: MapConfig[] = [
     treeColor: 0x1a4f08,
     trackWidth: 18,
     laps: 1,
-    checkpoints: [0.22, 0.44, 0.66, 0.88],
+    checkpoints: [],
     waypoints: [
       // ── Départ — ligne droite courte ──
       [0,    0,   0],   // 0  START
