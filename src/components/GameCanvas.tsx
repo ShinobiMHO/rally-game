@@ -9,6 +9,100 @@ import type { CheckpointSplit, RaceState } from '@/types';
 import Leaderboard from './Leaderboard';
 import FinishScreen from './FinishScreen';
 
+// ── Touch button ──
+function TouchBtn({
+  label, color, onPress, onRelease, style,
+}: {
+  label: string; color: string;
+  onPress: () => void; onRelease: () => void;
+  style?: React.CSSProperties;
+}) {
+  const [active, setActive] = useState(false);
+  return (
+    <div
+      onTouchStart={e => { e.preventDefault(); setActive(true); onPress(); }}
+      onTouchEnd={e => { e.preventDefault(); setActive(false); onRelease(); }}
+      onTouchCancel={e => { e.preventDefault(); setActive(false); onRelease(); }}
+      onMouseDown={() => { setActive(true); onPress(); }}
+      onMouseUp={() => { setActive(false); onRelease(); }}
+      onMouseLeave={() => { setActive(false); onRelease(); }}
+      style={{
+        width: 80, height: 80, borderRadius: 18,
+        background: active ? color : color.replace(/[\d.]+\)$/, '0.25)'),
+        border: `2px solid ${color}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 30, fontWeight: 900, color: '#fff',
+        userSelect: 'none', touchAction: 'none', cursor: 'pointer',
+        transition: 'background 0.07s, transform 0.07s',
+        transform: active ? 'scale(0.93)' : 'scale(1)',
+        WebkitTapHighlightColor: 'transparent',
+        ...style,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+// ── Mini-map ──
+function MiniMap({ waypoints, progress }: { waypoints: [number, number, number][], progress: number }) {
+  const SIZE = 130;
+  const PAD = 12;
+  const xs = waypoints.map(w => w[0]);
+  const zs = waypoints.map(w => w[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const rangeX = maxX - minX || 1, rangeZ = maxZ - minZ || 1;
+  const scale = (SIZE - PAD * 2) / Math.max(rangeX, rangeZ);
+  const ox = PAD + (SIZE - PAD * 2 - rangeX * scale) / 2;
+  const oz = PAD + (SIZE - PAD * 2 - rangeZ * scale) / 2;
+
+  const toSvg = (x: number, z: number) => ({
+    x: ox + (x - minX) * scale,
+    y: oz + (z - minZ) * scale,
+  });
+
+  const pts = waypoints.map(([x, z]) => {
+    const p = toSvg(x, z);
+    return `${p.x},${p.y}`;
+  }).join(' ');
+
+  // Car position: interpolate along waypoints by progress
+  const n = waypoints.length - 1;
+  const fi = progress * n;
+  const i = Math.min(Math.floor(fi), n - 1);
+  const frac = fi - i;
+  const [ax, az] = waypoints[i];
+  const [bx, bz] = waypoints[Math.min(i + 1, n)];
+  const carX = ax + (bx - ax) * frac;
+  const carZ = az + (bz - az) * frac;
+  const carPt = toSvg(carX, carZ);
+
+  return (
+    <div style={{
+      background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+      borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden',
+    }}>
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+        {/* Track */}
+        <polyline points={pts} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Completed part */}
+        <polyline points={
+          waypoints.slice(0, i + 2).map(([x, z]) => {
+            const p = toSvg(x, z); return `${p.x},${p.y}`;
+          }).join(' ')
+        } fill="none" stroke="#ff8833" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Start */}
+        <circle cx={toSvg(waypoints[0][0], waypoints[0][1]).x} cy={toSvg(waypoints[0][0], waypoints[0][1]).y} r="4" fill="#00ff88" />
+        {/* Finish */}
+        <circle cx={toSvg(waypoints[n][0], waypoints[n][1]).x} cy={toSvg(waypoints[n][0], waypoints[n][1]).y} r="4" fill="#ff2222" />
+        {/* Car */}
+        <circle cx={carPt.x} cy={carPt.y} r="5" fill="#ffffff" stroke="#ff8833" strokeWidth="2" />
+      </svg>
+    </div>
+  );
+}
+
 interface Props {
   nickname: string;
   carId: number;
@@ -266,29 +360,9 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         })}
       </div>
 
-      {/* ═══════════════ MAP/CAR INFO (bottom left) ═══════════════ */}
-      <div style={{
-        position: 'absolute', bottom: 16, left: 16,
-        pointerEvents: 'none',
-      }}>
-        <div style={{
-          background: 'rgba(0,0,0,0.55)',
-          backdropFilter: 'blur(6px)',
-          borderRadius: 10,
-          padding: '8px 14px',
-          border: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex', gap: 10, alignItems: 'center',
-        }}>
-          <span style={{
-            width: 10, height: 10, borderRadius: 2,
-            background: `#${car.color.toString(16).padStart(6, '0')}`,
-            display: 'inline-block',
-            flexShrink: 0,
-          }} />
-          <span style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>{car.name}</span>
-          <span style={{ color: '#444' }}>•</span>
-          <span style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>{map.name}</span>
-        </div>
+      {/* ═══════════════ MINI-MAP + INFO (bottom left) ═══════════════ */}
+      <div style={{ position: 'absolute', bottom: 16, left: 16, pointerEvents: 'none' }}>
+        <MiniMap waypoints={MAP_CONFIGS[mapId].waypoints} progress={stageProgress} />
       </div>
 
       {/* ═══════════════ SPEEDOMETER (bottom center) ═══════════════ */}
@@ -342,7 +416,7 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         </div>
       </div>
 
-      {/* ═══════════════ CONTROLS HINT (bottom right) ═══════════════ */}
+      {/* ═══════════════ CONTROLS HINT — desktop only (bottom right) ═══════════════ */}
       <div style={{
         position: 'absolute', bottom: 16, right: 16,
         pointerEvents: 'none',
@@ -354,9 +428,50 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           border: '1px solid rgba(255,255,255,0.06)',
           fontSize: 11, color: '#555', letterSpacing: 0.5,
         }}>
-          ZQSD / ↑↓←→ &nbsp;•&nbsp; <span style={{ color: '#f90' }}>Space</span> Drift &nbsp;•&nbsp; <span style={{ color: '#888' }}>R</span> Restart &nbsp;•&nbsp; <span style={{ color: '#888' }}>Tab</span> LB
+          ZQSD / ↑↓←→ &nbsp;•&nbsp; <span style={{ color: '#f90' }}>Space</span> Drift &nbsp;•&nbsp; <span style={{ color: '#888' }}>R</span> Restart
         </div>
       </div>
+
+      {/* ═══════════════ TOUCH CONTROLS — mobile ═══════════════ */}
+      {raceState !== 'finished' && (
+        <>
+          {/* Steering gauche */}
+          <div style={{
+            position: 'absolute', bottom: 28, left: 24,
+            display: 'flex', gap: 10, pointerEvents: 'auto',
+          }}>
+            <TouchBtn label="◀" color="rgba(255,255,255,0.55)"
+              onPress={() => engineRef.current?.setInput('left', true)}
+              onRelease={() => engineRef.current?.setInput('left', false)} />
+            <TouchBtn label="▶" color="rgba(255,255,255,0.55)"
+              onPress={() => engineRef.current?.setInput('right', true)}
+              onRelease={() => engineRef.current?.setInput('right', false)} />
+          </div>
+          {/* Dérive — milieu bas */}
+          <div style={{
+            position: 'absolute', bottom: 28, left: '50%',
+            transform: 'translateX(-50%)', pointerEvents: 'auto',
+          }}>
+            <TouchBtn label="💨" color="rgba(255,150,0,0.6)"
+              style={{ width: 68, height: 68, fontSize: 24 }}
+              onPress={() => engineRef.current?.setInput('handbrake', true)}
+              onRelease={() => engineRef.current?.setInput('handbrake', false)} />
+          </div>
+          {/* Gas + Frein — droite */}
+          <div style={{
+            position: 'absolute', bottom: 28, right: 24,
+            display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'auto',
+          }}>
+            <TouchBtn label="🛑" color="rgba(255,60,60,0.6)"
+              onPress={() => engineRef.current?.setInput('backward', true)}
+              onRelease={() => engineRef.current?.setInput('backward', false)} />
+            <TouchBtn label="▲" color="rgba(0,200,100,0.7)"
+              style={{ height: 100 }}
+              onPress={() => engineRef.current?.setInput('forward', true)}
+              onRelease={() => engineRef.current?.setInput('forward', false)} />
+          </div>
+        </>
+      )}
 
       {/* ═══════════════ FINISH SCREEN ═══════════════ */}
       {raceState === 'finished' && !showLeaderboard && (

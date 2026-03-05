@@ -85,7 +85,17 @@ export class GameEngine {
   private verticalVel: number = 0;
   private isAirborne: boolean = false;
 
+  // Skid marks
+  private skidMarkMeshes: THREE.Mesh[] = [];
+  private readonly MAX_SKIDS = 300;
+  private skidTimer = 0;
+
+  // Engine sound
   private soundCtx: AudioContext | null = null;
+  private engineOsc: OscillatorNode | null = null;
+  private engineGain: GainNode | null = null;
+  private engineOsc2: OscillatorNode | null = null;
+  private engineGain2: GainNode | null = null;
 
   private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private _keyupHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -110,11 +120,10 @@ export class GameEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Forest overcast sky
-    const skyColor = new THREE.Color(0x7a9a6a);
+    // Sunset sky — Forêt des Corbières crépuscule
     this.scene = new THREE.Scene();
-    this.scene.background = skyColor;
-    this.scene.fog = new THREE.FogExp2(0x889e78, 0.009); // exponential fog — denser at distance
+    this.scene.background = new THREE.Color(0xc8622a);
+    this.scene.fog = new THREE.FogExp2(0xb85a20, 0.006); // warm haze
 
     // Third-person camera — close, low, behind the car
     this.camera = new THREE.PerspectiveCamera(72, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
@@ -570,6 +579,13 @@ export class GameEngine {
         light.position.set(tp.center.x, cy + tunnelH - 0.6, tp.center.z);
         this.scene.add(light);
       }
+
+      // PointLight every ~30 track points inside tunnel
+      if ((i - idxStart) % 30 === 0) {
+        const tunnelLight = new THREE.PointLight(0xffcc88, 1.5, 35);
+        tunnelLight.position.set(tp.center.x, cy + 4, tp.center.z);
+        this.scene.add(tunnelLight);
+      }
     }
   }
 
@@ -673,12 +689,12 @@ export class GameEngine {
     // ── Terrain with rolling hills ──
     this.buildTerrain(rng);
 
-    // ── Dense forest: 350 trees, packed on both sides ──
+    // ── Dense forest: 450 trees, packed on both sides ──
     const treeMat1 = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
     const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
 
-    for (let i = 0; i < 350; i++) {
+    for (let i = 0; i < 450; i++) {
       const x = (rng() - 0.5) * 600;
       const z = (rng() - 0.5) * 650;
       const pos = new THREE.Vector3(x, 0, z);
@@ -716,6 +732,62 @@ export class GameEngine {
       tree.position.set(x, treeY, z);
       tree.rotation.y = rng() * Math.PI * 2;
       this.scene.add(tree);
+    }
+
+    // ── Bouleaux (birch trees) — 80 trunks blancs ──
+    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xddddcc });
+    const birchCrownMat = new THREE.MeshLambertMaterial({ color: 0x88cc44 });
+
+    for (let i = 0; i < 80; i++) {
+      const x = (rng() - 0.5) * 600;
+      const z = (rng() - 0.5) * 650;
+
+      let minDist = Infinity;
+      for (const tp of this.trackPoints) {
+        const d = new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z));
+        if (d < minDist) minDist = d;
+      }
+      if (minDist < this.mapConfig.trackWidth * 1.8) continue;
+
+      const treeY = this.getTerrainY(x, z);
+      const h = 7 + rng() * 8;
+      const r = 1.5 + rng() * 2.0;
+
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, h * 0.5, 5), birchTrunkMat);
+      trunk.position.y = h * 0.25;
+      trunk.castShadow = true;
+
+      const crown1 = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.65, 6), birchCrownMat);
+      crown1.position.y = h * 0.6;
+      crown1.castShadow = true;
+      const crown2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.6, h * 0.45, 6), birchCrownMat);
+      crown2.position.y = h * 0.75;
+
+      const tree = new THREE.Group();
+      tree.add(trunk, crown1, crown2);
+      tree.position.set(x, treeY, z);
+      tree.rotation.y = rng() * Math.PI * 2;
+      this.scene.add(tree);
+    }
+
+    // ── Taches de boue sur la piste (40 patches) ──
+    const mudMat = new THREE.MeshBasicMaterial({ color: 0x6a4010, transparent: true, opacity: 0.55, depthWrite: false });
+    const trackLen = this.trackPoints.length;
+    for (let i = 0; i < 40; i++) {
+      const idx = Math.floor(rng() * trackLen);
+      const tp = this.trackPoints[idx];
+      if (!tp) continue;
+      const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+      const offAcross = (rng() - 0.5) * (this.mapConfig.trackWidth * 0.8);
+      const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const pos = tp.center.clone().addScaledVector(perp, offAcross);
+      const mudW = 2.5 + rng() * 4.0;
+      const mudL = 3.0 + rng() * 5.0;
+      const mud = new THREE.Mesh(new THREE.PlaneGeometry(mudW, mudL), mudMat.clone());
+      mud.rotation.x = -Math.PI / 2;
+      mud.rotation.z = angle + (rng() - 0.5) * 0.8;
+      mud.position.set(pos.x, tp.center.y + 0.04, pos.z);
+      this.scene.add(mud);
     }
 
     // ── Undergrowth / bushes — close to track edges ──
@@ -805,7 +877,9 @@ export class GameEngine {
     }
     groundGeo.computeVertexNormals();
 
-    const groundMat = new THREE.MeshLambertMaterial({ color: this.mapConfig.groundColor });
+    const baseGroundColor = new THREE.Color(this.mapConfig.groundColor);
+    baseGroundColor.lerp(new THREE.Color(0xcc7733), 0.15);
+    const groundMat = new THREE.MeshLambertMaterial({ color: baseGroundColor });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
@@ -1052,12 +1126,12 @@ export class GameEngine {
   // ─────────────── Lights ───────────────
 
   private setupLights() {
-    // Forest ambient — green-tinted
-    this.scene.add(new THREE.AmbientLight(0xaac890, 0.65));
+    // Sunset ambient — warm orange
+    this.scene.add(new THREE.AmbientLight(0xcc8844, 0.7));
 
-    // Sun — diffused through canopy
-    const sun = new THREE.DirectionalLight(0xe0eecc, 1.0);
-    sun.position.set(35, 90, 60);
+    // Sun — rasant de côté, lumière dorée crépusculaire
+    const sun = new THREE.DirectionalLight(0xffaa44, 1.2);
+    sun.position.set(80, 35, -20);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 1;
@@ -1066,9 +1140,9 @@ export class GameEngine {
     sun.shadow.camera.right = sun.shadow.camera.top = 220;
     this.scene.add(sun);
 
-    // Cool fill from sky
-    const fill = new THREE.DirectionalLight(0x7a9e78, 0.4);
-    fill.position.set(-40, 25, -40);
+    // Fill light — ombre violette du côté opposé au soleil
+    const fill = new THREE.DirectionalLight(0x4422aa, 0.35);
+    fill.position.set(-50, 20, 60);
     this.scene.add(fill);
   }
 
@@ -1078,6 +1152,48 @@ export class GameEngine {
     try {
       this.soundCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     } catch {}
+    try {
+      const ctx = this.soundCtx!;
+      this.engineOsc = ctx.createOscillator();
+      this.engineOsc.type = 'sawtooth';
+      this.engineOsc.frequency.value = 70;
+      this.engineGain = ctx.createGain();
+      this.engineGain.gain.value = 0;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 450;
+      this.engineOsc.connect(lp);
+      lp.connect(this.engineGain);
+      this.engineGain.connect(ctx.destination);
+      this.engineOsc.start();
+
+      this.engineOsc2 = ctx.createOscillator();
+      this.engineOsc2.type = 'square';
+      this.engineOsc2.frequency.value = 140;
+      this.engineGain2 = ctx.createGain();
+      this.engineGain2.gain.value = 0;
+      this.engineOsc2.connect(this.engineGain2);
+      this.engineGain2.connect(ctx.destination);
+      this.engineOsc2.start();
+    } catch {}
+  }
+
+  private updateAudio() {
+    if (!this.soundCtx || !this.engineOsc || !this.engineGain) return;
+    if (this.raceState === 'countdown') {
+      this.engineGain.gain.setTargetAtTime(0.01, this.soundCtx.currentTime, 0.2);
+      return;
+    }
+    const speedRatio = Math.abs(this.physics.speed) / 24;
+    const freq = 75 + speedRatio * 230;
+    const vol = 0.03 + speedRatio * 0.055;
+    const now = this.soundCtx.currentTime;
+    this.engineOsc.frequency.setTargetAtTime(freq, now, 0.04);
+    this.engineGain.gain.setTargetAtTime(vol, now, 0.06);
+    if (this.engineOsc2 && this.engineGain2) {
+      this.engineOsc2.frequency.setTargetAtTime(freq * 2.05, now, 0.04);
+      this.engineGain2.gain.setTargetAtTime(vol * 0.25, now, 0.06);
+    }
   }
 
   public resumeAudio() {
@@ -1162,6 +1278,7 @@ export class GameEngine {
     this.updateParticles(dt, now);
     this.updateTimer(now);
     this.checkProgress();
+    this.updateAudio();
     // Speed in km/h (game units × ~4.5 to feel like real km/h)
     this.callbacks.onSpeedUpdate?.(Math.abs(this.physics.speed) * 4.5);
   }
@@ -1465,8 +1582,14 @@ export class GameEngine {
         this.dirtParticleTimer = 0;
         // Dirt/mud spray — brown particles
         const color = drift > 3 ? 0x8a5a2a : 0xa07840;
-        this.emitDirt(color, 1.5, drift > 3 ? 350 : 250);
+        this.emitDirt(color, 2.0, drift > 3 ? 350 : 250);
       }
+    }
+
+    this.skidTimer += dt;
+    if (Math.abs(this.physics.lateralVel) > 3.5 && Math.abs(this.physics.speed) > 4 && this.skidTimer > 0.06) {
+      this.skidTimer = 0;
+      this.addSkidMark();
     }
 
     this.particles = this.particles.filter(p => {
@@ -1482,8 +1605,29 @@ export class GameEngine {
     });
   }
 
+  private addSkidMark() {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x221100, transparent: true, opacity: 0.5, depthWrite: false });
+    for (const side of [-2.5, 2.5]) {
+      const normal = new THREE.Vector3(Math.cos(this.physics.heading), 0, -Math.sin(this.physics.heading));
+      const pos = this.physics.position.clone().addScaledVector(normal, side);
+      const geo = new THREE.PlaneGeometry(0.9, 1.6);
+      const mark = new THREE.Mesh(geo, mat.clone());
+      mark.rotation.x = -Math.PI / 2;
+      mark.rotation.z = -this.physics.heading;
+      mark.position.set(pos.x, pos.y - 0.28, pos.z);
+      this.scene.add(mark);
+      this.skidMarkMeshes.push(mark);
+    }
+    while (this.skidMarkMeshes.length > this.MAX_SKIDS) {
+      const old = this.skidMarkMeshes.shift()!;
+      this.scene.remove(old);
+      old.geometry.dispose();
+      (old.material as THREE.Material).dispose();
+    }
+  }
+
   private emitDirt(color: number, size: number, lifetime: number) {
-    const n = 8;
+    const n = 12;
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       pos[i * 3] = this.physics.position.x + (Math.random() - 0.5) * 3;
@@ -1514,6 +1658,8 @@ export class GameEngine {
     this.placeCarAtStart();
     this.particles.forEach(p => this.scene.remove(p));
     this.particles = [];
+    this.skidMarkMeshes.forEach(m => { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); });
+    this.skidMarkMeshes = [];
     this.startCountdown();
   }
 
@@ -1521,6 +1667,11 @@ export class GameEngine {
   public getBestTime() { return this.bestTotalTime === Infinity ? null : this.bestTotalTime; }
   public getRaceState() { return this.raceState; }
   public getCurrentLap() { return this.currentLap; }
+
+  /** Touch / virtual button input — call from UI */
+  public setInput(key: 'forward' | 'backward' | 'left' | 'right' | 'handbrake', value: boolean) {
+    this.input[key] = value;
+  }
 
   // ─────────────── Lifecycle ───────────────
 
@@ -1538,6 +1689,8 @@ export class GameEngine {
     window.removeEventListener('resize', this.onResize);
     if (this._keydownHandler) window.removeEventListener('keydown', this._keydownHandler);
     if (this._keyupHandler) window.removeEventListener('keyup', this._keyupHandler);
+    try { this.engineOsc?.stop(); } catch {}
+    try { this.engineOsc2?.stop(); } catch {}
     try { this.soundCtx?.close(); } catch {}
     this.renderer.dispose();
   }

@@ -1,15 +1,13 @@
 import type { MapConfig } from '@/types';
 
+// Forêt des Corbières — Crépuscule
+// ~60 secondes de course, 28 waypoints
 // [x, z_world, y_elevation]
-// Zones spéciales (par indice de waypoint, base 0) :
-//   Bridge  : wp 13 → 16  (y élevé, piliers en-dessous)
-//   Jump    : wp 16 → 17  (crête → chute brutale)
-//   Tunnel  : wp 17 → 20  (section couverte)
 export const MAP_CONFIGS: MapConfig[] = [
   {
     id: 0,
-    name: 'Forêt de Bretagne',
-    description: 'Spéciale terre — forêt, pont, saut, tunnel — départ → arrivée',
+    name: 'Forêt des Corbières',
+    description: 'Spéciale crépuscule — forêt dense, col, pont, saut, tunnel',
     difficulty: 'Medium',
     groundColor: 0x2e4a12,
     roadColor: 0x7a5230,
@@ -17,37 +15,46 @@ export const MAP_CONFIGS: MapConfig[] = [
     treeColor: 0x1a4f08,
     trackWidth: 18,
     laps: 1,
-    checkpoints: [0.18, 0.36, 0.55, 0.74],
+    checkpoints: [0.18, 0.38, 0.58, 0.78],
     waypoints: [
-      // ── Forêt ──
-      [0,    0,    0],    // 0  START — clairière
-      [18,   30,   2],    // 1
-      [35,   65,   6],    // 2  montée
-      [20,  100,  10],    // 3  crête
-      [-5,  125,   8],    // 4
-      [-28, 160,   4],    // 5  descente gauche
-      [-10, 200,   7],    // 6  épingle remontée
-      [25,  225,  12],    // 7  CRÊTE FORÊT
-      [42,  265,   7],    // 8  descente rapide
-      [18,  298,   2],    // 9  fond de vallée
-      [-8,  325,   4],    // 10 remontée
-      [5,   355,   3],    // 11 chicane gauche
-      [-18, 385,   5],    // 12 chicane droite
-      // ── Pont ──
-      [10,  420,  10],    // 13 approche pont (montée)
-      [14,  455,  18],    // 14 PONT HAUT gauche
-      [8,   490,  18],    // 15 PONT HAUT droite
-      [-2,  520,  17],    // 16 sortie pont (encore haut)
-      // ── Saut ──
-      [5,   540,  19],    // 17 RAMPE SAUT — crête maximale
-      [0,   570,   3],    // 18 ATTERRISSAGE — chute brutale
-      // ── Tunnel ──
-      [-12, 595,   2],    // 19 entrée tunnel
-      [-5,  625,   3],    // 20 milieu tunnel
-      [8,   650,   2],    // 21 sortie tunnel
+      // ── Forêt ouverture (rapide) ──
+      [0,   0,    0],   // 0  START — clairière
+      [22,  48,   3],   // 1  entrée forêt
+      [40,  95,   7],   // 2  montée
+      // ── Technique : épingle + chicane ──
+      [20,  135,  10],  // 3  virage gauche technique
+      [-15, 162,  11],  // 4  épingle gauche
+      [-32, 195,   8],  // 5  sortie descente
+      // ── Descente rapide en vallée ──
+      [-15, 238,   4],  // 6  fond de vallée
+      [18,  278,   3],  // 7  sweeper droit
+      // ── Chicanes (secteur technique) ──
+      [42,  312,   5],  // 8  chicane droite
+      [10,  342,   7],  // 9  chicane gauche
+      [-18, 372,   5],  // 10 chicane droite sortie
+      // ── Montée col (paysage ouvert) ──
+      [-5,  415,  13],  // 11 montée col
+      [28,  458,  16],  // 12 CRÊTE — vue dégagée
+      [52,  498,  14],  // 13 descente douce
+      // ── PONT (section élevée sur rivière) ──
+      [38,  542,  21],  // 14 pont début (très haut)
+      [22,  582,  22],  // 15 pont milieu
+      [5,   618,  19],  // 16 pont fin
+      // ── SAUT ──
+      [0,   650,  22],  // 17 RAMPE — crête maximale
+      [10,  680,   3],  // 18 ATTERRISSAGE — chute brutale
+      // ── Vallée technique ──
+      [25,  712,   3],  // 19 récupération
+      [-5,  748,   4],  // 20 gauche
+      [-20, 782,   5],  // 21 droite
+      // ── TUNNEL ──
+      [-8,  818,   3],  // 22 entrée tunnel
+      [12,  855,   4],  // 23 milieu tunnel
+      [28,  888,   3],  // 24 sortie tunnel
       // ── Sprint final ──
-      [20,  672,   1],    // 22 dernière ligne droite
-      [5,   700,   0],    // 23 ARRIVÉE
+      [18,  928,   2],  // 25 dernière ligne droite
+      [5,   968,   1],  // 26
+      [0,   1000,  0],  // 27 ARRIVÉE
     ],
   },
 ];
