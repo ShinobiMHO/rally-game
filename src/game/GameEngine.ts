@@ -1892,13 +1892,13 @@ export class GameEngine {
 
     const speedBoost = 0.9 + (carConfig.speed - 1) * 0.18;
     const handlingBoost = 0.7 + (carConfig.handling - 1) * 0.16;
-    const maxSpeed = 28 * speedBoost;
-    const accel = 16 * speedBoost;
-    const brakeForce = 42;
+    const maxSpeed = 20 * speedBoost;   // plus lent — maîtrise
+    const accel = 11 * speedBoost;
+    const brakeForce = 36;
     const rollFriction = 5;
-    const steerMax = 2.8 * handlingBoost;
-    const lateralGrip = 1.4 + (carConfig.handling - 1) * 0.3;  // terre : peu de grip
-    const driftAccum = 11 + (5 - carConfig.handling) * 1.2;    // arrière part vite
+    const steerMax = 3.0 * handlingBoost;
+    const lateralGrip = 0.7 + (carConfig.handling - 1) * 0.15;  // terre glissante — très peu de grip
+    const driftAccum = 16 + (5 - carConfig.handling) * 1.5;     // arrière part fort
 
     const speedRatio = Math.abs(physics.speed) / maxSpeed;
 
@@ -1958,9 +1958,9 @@ export class GameEngine {
     // Terre glissante : la dérive se dissipe lentement (surface loose)
     physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, effectiveLateralGrip * dt);
 
-    // Imperfections de surface — légère perturbation latérale aléatoire à vitesse
-    if (!isHandbrake && speedRatio > 0.4) {
-      physics.lateralVel += (Math.random() - 0.5) * speedRatio * 0.4;
+    // Imperfections de surface terre
+    if (!isHandbrake && speedRatio > 0.35) {
+      physics.lateralVel += (Math.random() - 0.5) * speedRatio * 0.25;
     }
 
     const maxLateral = maxSpeed * 0.85;
@@ -2174,11 +2174,11 @@ export class GameEngine {
   private camShake: number = 0; // landing impact shake
 
   private updateCamera(dt: number) {
-    // XZ suit la voiture vite, Y lissé pour éviter le jitter vertical
+    // XZ = snap quasi-immédiat sur la voiture, Y lissé pour no jitter
     const p = this.physics.position;
-    this.smoothCamTarget.x = THREE.MathUtils.lerp(this.smoothCamTarget.x, p.x, 0.18);
-    this.smoothCamTarget.z = THREE.MathUtils.lerp(this.smoothCamTarget.z, p.z, 0.18);
-    this.smoothCamTarget.y = THREE.MathUtils.lerp(this.smoothCamTarget.y, p.y, 0.08);
+    this.smoothCamTarget.x = THREE.MathUtils.lerp(this.smoothCamTarget.x, p.x, 0.35);
+    this.smoothCamTarget.z = THREE.MathUtils.lerp(this.smoothCamTarget.z, p.z, 0.35);
+    this.smoothCamTarget.y = THREE.MathUtils.lerp(this.smoothCamTarget.y, p.y, 0.10);
     const target = this.smoothCamTarget.clone();
 
     // Heading découplé, lerp constant
@@ -2200,7 +2200,7 @@ export class GameEngine {
       -Math.cos(this.cameraHeading) * behind
     ));
 
-    this.camera.position.lerp(desiredPos, 0.04);
+    this.camera.position.lerp(desiredPos, 0.10);
     this.camera.lookAt(target.x, target.y + 1.0, target.z);
   }
 
