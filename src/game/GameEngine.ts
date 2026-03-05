@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect, VignetteEffect } from 'postprocessing';
 import type { MapConfig, CarConfig, CheckpointSplit, RaceState } from '@/types';
 
 interface PhysicsState {
@@ -42,6 +43,7 @@ export type EngineCallback = {
 
 export class GameEngine {
   private renderer: THREE.WebGLRenderer;
+  private composer!: EffectComposer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private carGroup!: THREE.Group;
@@ -132,6 +134,13 @@ export class GameEngine {
 
     // Third-person camera — close, low, behind the car
     this.camera = new THREE.PerspectiveCamera(72, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
+
+    // Post-processing : Bloom + Vignette
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    const bloom = new BloomEffect({ luminanceThreshold: 0.65, luminanceSmoothing: 0.3, intensity: 0.6 });
+    const vignette = new VignetteEffect({ offset: 0.3, darkness: 0.55 });
+    this.composer.addPass(new EffectPass(this.camera, bloom, vignette));
 
     this.setupLights();
     this.buildTrack();
@@ -2016,7 +2025,7 @@ export class GameEngine {
       const dt = Math.min((now - this.lastUpdateTime) / 1000, 0.05);
       this.lastUpdateTime = now;
       this.update(dt, now);
-      this.renderer.render(this.scene, this.camera);
+      this.composer.render(dt);
     };
     this.animationId = requestAnimationFrame(loop);
   }
@@ -2494,6 +2503,7 @@ export class GameEngine {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     this.renderer.setSize(w, h, false);
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
