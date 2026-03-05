@@ -1664,12 +1664,13 @@ export class GameEngine {
   private buildCar() {
     this.carGroup = new THREE.Group();
 
-    const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.35, metalness: 0.12 });
-    const blue = new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.45, metalness: 0.1 });
-    const red = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.45, metalness: 0.05 });
-    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.2 });
-    const darkGrey = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, metalness: 0.1 });
-    const winMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.05 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.3, metalness: 0.15 });
+    const blue = new THREE.MeshStandardMaterial({ color: 0x0033aa, roughness: 0.4, metalness: 0.12 });
+    const red = new THREE.MeshStandardMaterial({ color: 0xdd0011, roughness: 0.4, metalness: 0.08 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.55, metalness: 0.25 });
+    const darkGrey = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.65, metalness: 0.15 });
+    const yellow = new THREE.MeshStandardMaterial({ color: 0xffd600, roughness: 0.4, metalness: 0.05 });
+    const winMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.5, roughness: 0.05, metalness: 0.1 });
     const lightMat = new THREE.MeshBasicMaterial({ color: 0xfffaaa });
     const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
 
@@ -1719,10 +1720,25 @@ export class GameEngine {
     cabin.castShadow = true;
     this.carGroup.add(cabin);
 
-    // Blue roof stripe
-    const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.01, 1.78), blue);
+    // Roof stripe (blue)
+    const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.01, 1.78), blue);
     roofStripe.position.set(0, 1.27, -0.1);
     this.carGroup.add(roofStripe);
+
+    // Bandes latérales (side livery) : rouge + jaune en diagonale
+    for (const sx of [-1, 1]) {
+      const sideBand = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.3, 2.8), blue);
+      sideBand.position.set(sx * 1.21, 0.55, 0.2);
+      this.carGroup.add(sideBand);
+      const sideAccent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.12, 2.8), red);
+      sideAccent.position.set(sx * 1.21, 0.35, 0.2);
+      this.carGroup.add(sideAccent);
+    }
+
+    // Numéro sur le toit (boîte jaune avec "1")
+    const numBox = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.01, 0.7), yellow);
+    numBox.position.set(0, 1.275, -0.1);
+    this.carGroup.add(numBox);
 
     // Windshield
     const fWin = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.52), winMat);
