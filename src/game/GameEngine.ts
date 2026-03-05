@@ -120,6 +120,9 @@ export class GameEngine {
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // Jour ensoleillé — forêt diurne
     this.scene = new THREE.Scene();
@@ -293,8 +296,9 @@ export class GameEngine {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(roadColorsF, 3));
     geo.setIndex(indices);
 
-    // Dirt road — vertex colored for texture variation
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    // Dirt road — texture procédurale
+    const roadTex = this.createTexture('dirt-road', 512);
+    const mat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95, metalness: 0 });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true;
     this.scene.add(road);
@@ -713,7 +717,8 @@ export class GameEngine {
     const cavePoints = this.trackPoints.filter(tp => tp.center.y < -0.8);
     if (cavePoints.length === 0) return;
 
-    const rockMat  = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
+    const rockTexCave = this.createTexture('rock', 256);
+    const rockMat  = new THREE.MeshStandardMaterial({ map: rockTexCave, roughness: 0.9, metalness: 0, color: 0x2a2018 });
     const mossMat  = new THREE.MeshLambertMaterial({ color: 0x1a3a0a });
     const hw = this.mapConfig.trackWidth / 2 + 1;
 
@@ -795,8 +800,9 @@ export class GameEngine {
     const cliffPoints = this.trackPoints.filter(tp => tp.center.y > 18);
     if (cliffPoints.length === 0) return;
 
-    const cliffMat  = new THREE.MeshLambertMaterial({ color: 0x5a4a38 });
-    const darkCliff = new THREE.MeshLambertMaterial({ color: 0x3a2e24 });
+    const rockTexCliff = this.createTexture('rock', 256);
+    const cliffMat  = new THREE.MeshStandardMaterial({ map: rockTexCliff, roughness: 0.85, metalness: 0 });
+    const darkCliff = new THREE.MeshStandardMaterial({ color: 0x3a2e24, roughness: 0.9, metalness: 0 });
     const rngCliff  = this.seededRng(888);
     const hw = this.mapConfig.trackWidth / 2;
 
@@ -935,7 +941,8 @@ export class GameEngine {
     // ── Dense forest: 450 trees, packed on both sides ──
     const treeMat1 = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
     const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
+    const barkTex = this.createTexture('tree-bark', 256);
+    const trunkMat = new THREE.MeshStandardMaterial({ map: barkTex, roughness: 0.9, metalness: 0 });
 
     for (let i = 0; i < 280; i++) {
       const x = (rng() - 0.5) * 600;
@@ -1193,8 +1200,9 @@ export class GameEngine {
     }
 
     // ── Rochers au bord de piste (concentrés aux virages serrés) ──
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x5a5248 });
-    const darkRockMat = new THREE.MeshLambertMaterial({ color: 0x3a3530 });
+    const rockTexCorner = this.createTexture('rock', 256);
+    const rockMat = new THREE.MeshStandardMaterial({ map: rockTexCorner, roughness: 0.85, metalness: 0 });
+    const darkRockMat = new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 0.9, metalness: 0 });
     const rngRock = this.seededRng(555);
     const hwRock = this.mapConfig.trackWidth;
 
@@ -1293,9 +1301,8 @@ export class GameEngine {
     }
     groundGeo.computeVertexNormals();
 
-    // Sol forestier — herbe verte de jour
-    const baseGroundColor = new THREE.Color(0x2d5a10);
-    const groundMat = new THREE.MeshLambertMaterial({ color: baseGroundColor });
+    const groundTex = this.createTexture('forest-ground', 512);
+    const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1.0, metalness: 0 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
@@ -1523,12 +1530,13 @@ export class GameEngine {
   private buildCar() {
     this.carGroup = new THREE.Group();
 
-    const white = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
-    const blue = new THREE.MeshLambertMaterial({ color: 0x003399 });
-    const red = new THREE.MeshLambertMaterial({ color: 0xcc1111 });
-    const black = new THREE.MeshLambertMaterial({ color: 0x111111 });
-    const darkGrey = new THREE.MeshLambertMaterial({ color: 0x222222 });
-    const winMat = new THREE.MeshLambertMaterial({ color: 0x88ccff, transparent: true, opacity: 0.75 });
+    const carTex = this.createTexture('car-body', 512);
+    const white = new THREE.MeshStandardMaterial({ map: carTex, roughness: 0.4, metalness: 0.08 });
+    const blue = new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.45, metalness: 0.1 });
+    const red = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.45, metalness: 0.05 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.2 });
+    const darkGrey = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, metalness: 0.1 });
+    const winMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.05 });
     const lightMat = new THREE.MeshBasicMaterial({ color: 0xfffaaa });
     const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
 
@@ -1694,6 +1702,115 @@ export class GameEngine {
 
   // ─────────────── Lights ───────────────
 
+  // ─── Texture factory (procédurale, Canvas 2D) ───────────────────────────
+  private createTexture(type: 'dirt-road' | 'forest-ground' | 'tree-bark' | 'rock' | 'car-body', size = 512): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const rng = this.seededRng(type.charCodeAt(0) * 31 + type.length);
+
+    if (type === 'dirt-road') {
+      ctx.fillStyle = '#8a5a2a'; ctx.fillRect(0, 0, size, size);
+      // Bruit de surface
+      for (let i = 0; i < 1800; i++) {
+        const x = rng() * size, y = rng() * size, r = 1 + rng() * 3;
+        ctx.globalAlpha = 0.15 + rng() * 0.35;
+        ctx.fillStyle = rng() > 0.5 ? '#6a3a10' : '#aa7040';
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      // Ornières centrales
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#5a3010';
+      ctx.fillRect(size * 0.30, 0, size * 0.06, size);
+      ctx.fillRect(size * 0.64, 0, size * 0.06, size);
+      // Petits cailloux
+      ctx.globalAlpha = 0.7;
+      for (let i = 0; i < 120; i++) {
+        const x = rng() * size, y = rng() * size, r = 2 + rng() * 3;
+        ctx.fillStyle = `hsl(${25 + rng()*15},${30 + rng()*20}%,${28 + rng()*18}%)`;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+    } else if (type === 'forest-ground') {
+      ctx.fillStyle = '#2a4010'; ctx.fillRect(0, 0, size, size);
+      for (let i = 0; i < 1200; i++) {
+        const x = rng() * size, y = rng() * size, r = 3 + rng() * 18;
+        ctx.globalAlpha = 0.12 + rng() * 0.22;
+        ctx.fillStyle = rng() > 0.5 ? '#1e3a08' : '#3a5a18';
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      // Feuilles mortes
+      for (let i = 0; i < 200; i++) {
+        const x = rng() * size, y = rng() * size;
+        ctx.globalAlpha = 0.18 + rng() * 0.25;
+        const h = 20 + rng() * 40;
+        ctx.fillStyle = `hsl(${25 + rng()*30},${50+rng()*30}%,${35+rng()*20}%)`;
+        ctx.beginPath(); ctx.ellipse(x, y, 2 + rng()*4, 1 + rng()*3, rng()*Math.PI, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+    } else if (type === 'tree-bark') {
+      ctx.fillStyle = '#5c3a1a'; ctx.fillRect(0, 0, size, size);
+      // Striures verticales
+      for (let i = 0; i < 40; i++) {
+        const x = rng() * size;
+        ctx.globalAlpha = 0.3 + rng() * 0.4;
+        ctx.fillStyle = rng() > 0.5 ? '#3a2210' : '#7a5030';
+        ctx.fillRect(x, 0, 1 + rng() * 2, size);
+      }
+      // Fissures horizontales
+      for (let i = 0; i < 15; i++) {
+        const y = rng() * size;
+        ctx.globalAlpha = 0.2;
+        ctx.strokeStyle = '#2a1808';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y + (rng()-0.5)*20); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+    } else if (type === 'rock') {
+      ctx.fillStyle = '#6a6058'; ctx.fillRect(0, 0, size, size);
+      for (let i = 0; i < 30; i++) {
+        const x = rng() * size, y = rng() * size, r = 20 + rng() * 60;
+        ctx.globalAlpha = 0.08 + rng() * 0.15;
+        ctx.fillStyle = rng() > 0.5 ? '#8a807a' : '#4a4440';
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      for (let i = 0; i < 400; i++) {
+        const x = rng() * size, y = rng() * size;
+        ctx.globalAlpha = 0.08 + rng() * 0.1;
+        ctx.fillStyle = rng() > 0.5 ? '#7a7068' : '#5a5048';
+        ctx.fillRect(x, y, 1 + rng()*2, 1 + rng()*2);
+      }
+      ctx.globalAlpha = 1;
+
+    } else if (type === 'car-body') {
+      // Fond blanc
+      ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0, 0, size, size);
+      // Bande bleue (30% largeur)
+      ctx.fillStyle = '#003399';
+      ctx.fillRect(0, 0, size * 0.30, size);
+      // Bande rouge (8% largeur)
+      ctx.fillStyle = '#cc1111';
+      ctx.fillRect(size * 0.30, 0, size * 0.08, size);
+      // Numéro de rallye
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(size * 0.55, size * 0.35, size * 0.25, size * 0.30);
+      ctx.strokeStyle = '#000000'; ctx.lineWidth = 3;
+      ctx.strokeRect(size * 0.55, size * 0.35, size * 0.25, size * 0.30);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    if (type !== 'car-body') {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      if (type === 'dirt-road') tex.repeat.set(1, 20);
+      else if (type === 'forest-ground') tex.repeat.set(6, 6);
+      else tex.repeat.set(1, 3);
+    }
+    return tex;
+  }
+
   private buildSkyDome() {
     // Ciel de jour — horizon blanc-bleu → zenith bleu profond
     const skyGeo = new THREE.SphereGeometry(500, 32, 16);
@@ -1724,8 +1841,9 @@ export class GameEngine {
   }
 
   private setupLights() {
-    // Lumière ambiante de jour (ciel bleu)
-    this.scene.add(new THREE.AmbientLight(0xc8e0f0, 0.65));
+    // Lumière ambiante + hémisphère (ciel bleu / sol vert)
+    this.scene.add(new THREE.AmbientLight(0xc8e0f0, 0.5));
+    this.scene.add(new THREE.HemisphereLight(0x87ceeb, 0x4a7a20, 0.4));
 
     // Soleil de milieu de journée — blanc légèrement chaud
     const sun = new THREE.DirectionalLight(0xfff5e0, 1.4);
