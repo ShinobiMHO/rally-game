@@ -460,31 +460,31 @@ export class GameEngine {
   }
 
   private buildBarriers() {
-    // Wooden log barriers at road edges
-    const step = 5;
-    const logMat = new THREE.MeshLambertMaterial({ color: 0x7a5228 });
-    const darkLogMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 });
+    // Barrières WRC style — piquets rouges/blancs + garde-corps
+    const step = 6;
+    const postWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.1 });
+    const postRed   = new THREE.MeshStandardMaterial({ color: 0xdd1111, roughness: 0.6, metalness: 0.1 });
+    const railMat   = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.3 });
 
     for (let i = 0; i < this.trackPoints.length - 1; i += step) {
       const tp = this.trackPoints[i];
       const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
-      const alternate = Math.floor(i / step) % 3 !== 0;
+      const isRed = Math.floor(i / step) % 2 === 0;
+      const mat = isRed ? postRed : postWhite;
 
       for (const side of [tp.left, tp.right]) {
-        const logGeo = new THREE.CylinderGeometry(0.22, 0.25, step * 0.95, 6);
-        const log = new THREE.Mesh(logGeo, alternate ? logMat : darkLogMat);
-        log.rotation.z = Math.PI / 2;
-        log.rotation.y = angle;
-        log.position.set(side.x, side.y + 0.28, side.z);
-        log.castShadow = true;
-        this.scene.add(log);
+        // Piquet vertical
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.10, 1.1, 6), mat);
+        post.position.set(side.x, side.y + 0.55, side.z);
+        post.castShadow = true;
+        this.scene.add(post);
 
-        if (Math.floor(i / step) % 2 === 0) {
-          const stakeGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.9, 5);
-          const stake = new THREE.Mesh(stakeGeo, darkLogMat);
-          stake.position.set(side.x, side.y + 0.45, side.z);
-          this.scene.add(stake);
-        }
+        // Garde-corps horizontal (rail)
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, step * 0.98, 5), railMat);
+        rail.rotation.z = Math.PI / 2;
+        rail.rotation.y = angle;
+        rail.position.set(side.x, side.y + 0.9, side.z);
+        this.scene.add(rail);
       }
     }
   }
