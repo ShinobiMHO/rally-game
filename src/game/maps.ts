@@ -1,13 +1,14 @@
 import type { MapConfig } from '@/types';
 
-// Forêt des Corbières — Crépuscule
-// ~60 secondes de course, 28 waypoints
+// Forêt des Corbières — Spéciale Jour
+// ~65 secondes, 36 waypoints
+// Virages serrés, épingles, bosses multiples, saut modéré, tunnel
 // [x, z_world, y_elevation]
 export const MAP_CONFIGS: MapConfig[] = [
   {
     id: 0,
     name: 'Forêt des Corbières',
-    description: 'Spéciale crépuscule — forêt dense, col, pont, saut, tunnel',
+    description: 'Spéciale jour — forêt dense, épingles, bosses, saut, tunnel',
     difficulty: 'Medium',
     groundColor: 0x2e4a12,
     roadColor: 0x7a5230,
@@ -15,46 +16,55 @@ export const MAP_CONFIGS: MapConfig[] = [
     treeColor: 0x1a4f08,
     trackWidth: 18,
     laps: 1,
-    checkpoints: [0.18, 0.38, 0.58, 0.78],
+    checkpoints: [0.22, 0.44, 0.66, 0.88],
     waypoints: [
-      // ── Forêt ouverture (rapide) ──
-      [0,   0,    0],   // 0  START — clairière
-      [22,  48,   3],   // 1  entrée forêt
-      [40,  95,   7],   // 2  montée
-      // ── Technique : épingle + chicane ──
-      [20,  135,  10],  // 3  virage gauche technique
-      [-15, 162,  11],  // 4  épingle gauche
-      [-32, 195,   8],  // 5  sortie descente
-      // ── Descente rapide en vallée ──
-      [-15, 238,   4],  // 6  fond de vallée
-      [18,  278,   3],  // 7  sweeper droit
-      // ── Chicanes (secteur technique) ──
-      [42,  312,   5],  // 8  chicane droite
-      [10,  342,   7],  // 9  chicane gauche
-      [-18, 372,   5],  // 10 chicane droite sortie
-      // ── Montée col (paysage ouvert) ──
-      [-5,  415,  13],  // 11 montée col
-      [28,  458,  16],  // 12 CRÊTE — vue dégagée
-      [52,  498,  14],  // 13 descente douce
-      // ── PONT (section élevée sur rivière) ──
-      [38,  542,  21],  // 14 pont début (très haut)
-      [22,  582,  22],  // 15 pont milieu
-      [5,   618,  19],  // 16 pont fin
-      // ── SAUT ──
-      [0,   650,  22],  // 17 RAMPE — crête maximale
-      [10,  680,   3],  // 18 ATTERRISSAGE — chute brutale
-      // ── Vallée technique ──
-      [25,  712,   3],  // 19 récupération
-      [-5,  748,   4],  // 20 gauche
-      [-20, 782,   5],  // 21 droite
-      // ── TUNNEL ──
-      [-8,  818,   3],  // 22 entrée tunnel
-      [12,  855,   4],  // 23 milieu tunnel
-      [28,  888,   3],  // 24 sortie tunnel
-      // ── Sprint final ──
-      [18,  928,   2],  // 25 dernière ligne droite
-      [5,   968,   1],  // 26
-      [0,   1000,  0],  // 27 ARRIVÉE
+      // ── Départ — ligne droite courte ──
+      [0,    0,   0],   // 0  START
+      [8,   38,   1],   // 1
+      // ── Épingle serrée droite #1 ──
+      [32,  72,   2],   // 2  arrivée en virage
+      [48,  88,   3],   // 3  apex serré droite
+      [42, 108,   3],   // 4  sortie
+      [18, 128,   4],   // 5  reprise
+      // ── Chicane gauche-droite ──
+      [-12, 158,  5],   // 6  gauche
+      [8,  188,   5],   // 7  droite
+      // ── Petite bosse #1 ──
+      [20, 210,   6],   // 8
+      [28, 225,   9],   // 9  bosse (y=9)
+      [25, 242,   5],   // 10 atterrissage
+      // ── Épingle serrée gauche #2 ──
+      [10, 268,   4],   // 11 arrivée
+      [-14, 288,  4],   // 12 apex gauche serré
+      [-28, 305,  5],   // 13
+      [-18, 328,  5],   // 14 sortie
+      [8,  352,   6],   // 15 reprise accél
+      // ── Montée + bosse #2 ──
+      [22, 378,   8],   // 16
+      [30, 398,  12],   // 17 bosse haute (y=12)
+      [24, 418,   6],   // 18 atterrissage
+      // ── PONT élevé ──
+      [12, 448,  14],   // 19 début pont
+      [0,  475,  16],   // 20 milieu pont
+      [-10, 500, 12],   // 21 fin pont
+      // ── Épingle serrée droite #3 (après pont) ──
+      [4,  522,   6],   // 22
+      [28, 540,   5],   // 23 apex serré droite
+      [38, 558,   5],   // 24
+      [22, 580,   4],   // 25 sortie
+      // ── SAUT modéré ──
+      [8,  605,   4],   // 26
+      [0,  622,  10],   // 27 rampe (y=10 — modéré)
+      [0,  640,   3],   // 28 atterrissage
+      // ── TUNNEL + chicane finale ──
+      [10, 665,   3],   // 29 entrée tunnel
+      [22, 692,   4],   // 30 milieu tunnel
+      [18, 718,   3],   // 31 sortie tunnel
+      // ── S final serré ──
+      [-8, 748,   3],   // 32 gauche
+      [14, 778,   2],   // 33 droite
+      [5,  808,   1],   // 34
+      [0,  840,   0],   // 35 ARRIVÉE
     ],
   },
 ];

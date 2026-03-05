@@ -611,8 +611,8 @@ export class GameEngine {
   }
 
   private buildTunnel() {
-    // Build tunnel arches — tunnel is wp 22-24 of 27 → t ≈ 0.80 to 0.90
-    const tStart = 0.80;
+    // Tunnel wp 29-31 of 35 → t ≈ 0.80 to 0.89
+    const tStart = 0.79;
     const tEnd = 0.90;
     const totalPts = this.trackPoints.length;
     const idxStart = Math.floor(tStart * totalPts);
