@@ -122,8 +122,9 @@ export class GameEngine {
 
     // Sunset sky — Forêt des Corbières crépuscule
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xa04818); // orange foncé coucher de soleil
-    this.scene.fog = new THREE.FogExp2(0x6a3010, 0.009); // brume forêt plus dense
+    this.scene.background = new THREE.Color(0xa04818);
+    this.scene.fog = new THREE.FogExp2(0x6a3010, 0.009);
+    this.buildSkyDome();
 
     // Third-person camera — close, low, behind the car
     this.camera = new THREE.PerspectiveCamera(72, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
@@ -986,20 +987,59 @@ export class GameEngine {
       this.scene.add(patchGrp);
     }
 
-    // ── Rocks ──
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x6f6a60 });
-    for (let i = 0; i < 70; i++) {
-      const x = (rng() - 0.5) * 450;
-      const z = (rng() - 0.5) * 500;
+    // ── Rochers au bord de piste (concentrés aux virages serrés) ──
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x5a5248 });
+    const darkRockMat = new THREE.MeshLambertMaterial({ color: 0x3a3530 });
+    const rngRock = this.seededRng(555);
+    const hwRock = this.mapConfig.trackWidth;
+
+    // Détection des virages (changement de direction rapide)
+    for (let i = 5; i < this.trackPoints.length - 5; i++) {
+      const tp = this.trackPoints[i];
+      const tpPrev = this.trackPoints[i - 3];
+      const tpNext = this.trackPoints[i + 3];
+      const dir1 = new THREE.Vector2(tp.center.x - tpPrev.center.x, tp.center.z - tpPrev.center.z).normalize();
+      const dir2 = new THREE.Vector2(tpNext.center.x - tp.center.x, tpNext.center.z - tp.center.z).normalize();
+      const curvature = 1 - dir1.dot(dir2); // 0 = droit, +1 = virage fort
+
+      // Placer des rochers aux virages serrés (curvature > 0.15)
+      if (curvature < 0.12 || rngRock() > 0.4) continue;
+
+      const tangent = tp.tangent.clone().normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      // Côté extérieur du virage (là où ça se termine en talus)
+      const side = (dir2.x * dir1.y - dir2.y * dir1.x) > 0 ? 1 : -1;
+
+      for (let k = 0; k < 5 + Math.floor(rngRock() * 5); k++) {
+        const dist = hwRock * (1.1 + rngRock() * 1.5);
+        const fwd = (rngRock() - 0.5) * 12;
+        const pos = tp.center.clone()
+          .addScaledVector(normal, side * dist)
+          .addScaledVector(tangent, fwd);
+        const tY = pos.y + this.getTerrainY(pos.x, pos.z) * 0.15;
+        const s = 0.5 + rngRock() * 2.5;
+        const mat = rngRock() > 0.4 ? rockMat : darkRockMat;
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat);
+        rock.position.set(pos.x, tY + s * 0.3, pos.z);
+        rock.rotation.set(rngRock() * 2, rngRock() * 6, rngRock() * 2);
+        rock.castShadow = true;
+        this.scene.add(rock);
+      }
+    }
+
+    // ── Rochers épars dans la forêt ──
+    for (let i = 0; i < 40; i++) {
+      const x = (rng() - 0.5) * 500;
+      const z = (rng() - 0.5) * 1100;
       let tooClose = false;
       for (const tp of this.trackPoints) {
-        if (new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z)) < this.mapConfig.trackWidth * 1.5) {
+        if (new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z)) < hw * 1.6) {
           tooClose = true; break;
         }
       }
       if (tooClose) continue;
       const tY = this.getTerrainY(x, z);
-      const s = 0.4 + rng() * 2.2;
+      const s = 0.5 + rng() * 3.0;
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
       rock.position.set(x, tY + s * 0.3, z);
       rock.rotation.set(rng(), rng(), rng());
@@ -1295,6 +1335,42 @@ export class GameEngine {
   }
 
   // ─────────────── Lights ───────────────
+
+  private buildSkyDome() {
+    // Dégradé coucher de soleil : horizon orange brûlé → zenith violet/bleu nuit
+    const skyGeo = new THREE.SphereGeometry(500, 32, 16);
+    // Vertex colors pour le gradient
+    const posAttr = skyGeo.attributes.position as THREE.BufferAttribute;
+    const colors: number[] = [];
+    const horizonColor = new THREE.Color(0xd45010); // orange brûlé bas
+    const midColor    = new THREE.Color(0x8a2a50);  // rose-violet mi-hauteur
+    const zenithColor = new THREE.Color(0x0d0820);  // bleu nuit tout en haut
+    for (let i = 0; i < posAttr.count; i++) {
+      const y = posAttr.getY(i);
+      const t = Math.max(0, Math.min(1, y / 500));  // 0 = horizon, 1 = zenith
+      const c = new THREE.Color();
+      if (t < 0.35) c.lerpColors(horizonColor, midColor, t / 0.35);
+      else          c.lerpColors(midColor, zenithColor, (t - 0.35) / 0.65);
+      colors.push(c.r, c.g, c.b);
+    }
+    skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    sky.renderOrder = -1;
+    this.scene.add(sky);
+
+    // Disque solaire — glowing sphere à l'horizon
+    const sunSphereMat = new THREE.MeshBasicMaterial({ color: 0xffdd66 });
+    const sunSphere = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 8), sunSphereMat);
+    sunSphere.position.set(400, 35, -160); // horizon côté droit, très bas
+    this.scene.add(sunSphere);
+
+    // Halo solaire
+    const haloMat = new THREE.MeshBasicMaterial({ color: 0xff8822, transparent: true, opacity: 0.18, side: THREE.BackSide });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(40, 16, 8), haloMat);
+    halo.position.copy(sunSphere.position);
+    this.scene.add(halo);
+  }
 
   private setupLights() {
     // Sunset ambient — chaud mais pas trop lumineux (forêt filtre la lumière)
