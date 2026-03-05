@@ -44,10 +44,207 @@ function TouchBtn({
   );
 }
 
+// ── Gear helper ──
+function getGear(kmh: number): number {
+  if (kmh < 15) return 1;
+  if (kmh < 35) return 2;
+  if (kmh < 58) return 3;
+  if (kmh < 82) return 4;
+  if (kmh < 108) return 5;
+  return 6;
+}
+
+// ── SVG arc helpers ──
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = (angleDeg - 90) * (Math.PI / 180);
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function buildArcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
+  const s = polarToCartesian(cx, cy, r, startDeg);
+  const e = polarToCartesian(cx, cy, r, endDeg);
+  const sweep = endDeg - startDeg;
+  const large = sweep > 180 ? 1 : 0;
+  return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+}
+
+// ── SVG Speedometer ──
+function Speedometer({ speedKmh }: { speedKmh: number }) {
+  const MAX = 130;
+  const W = 210, H = 200;
+  const cx = 105, cy = 92;
+  const R = 74;
+  const START = -135; // 7 o'clock
+  const END = 135;    // 5 o'clock
+  const SWEEP = 270;
+
+  const gear = getGear(speedKmh);
+  const fraction = Math.min(speedKmh / MAX, 1);
+  const speedAngle = START + fraction * SWEEP;
+
+  const arcColor = speedKmh > 100 ? '#ff2200'
+    : speedKmh > 65 ? '#ffaa00'
+    : '#00dd88';
+
+  // Needle tip
+  const needleTip = polarToCartesian(cx, cy, R - 10, speedAngle);
+  const needleBase1 = polarToCartesian(cx, cy, 10, speedAngle - 90);
+  const needleBase2 = polarToCartesian(cx, cy, 10, speedAngle + 90);
+
+  // Tick marks: 0, 20, 40, 60, 80, 100, 120 km/h
+  const ticks = [0, 20, 40, 60, 80, 100, 120];
+
+  return (
+    <div style={{
+      background: 'rgba(0,0,0,0.82)',
+      backdropFilter: 'blur(12px)',
+      borderRadius: 20,
+      border: '1px solid rgba(255,255,255,0.12)',
+      overflow: 'hidden',
+      boxShadow: speedKmh > 80
+        ? `0 0 32px rgba(255,${speedKmh > 100 ? 60 : 150},0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)`
+        : 'inset 0 1px 0 rgba(255,255,255,0.06)',
+      transition: 'box-shadow 0.3s',
+    }}>
+      <svg width={W} height={H} style={{ display: 'block' }}>
+        {/* Outer glow ring (faint) */}
+        <circle cx={cx} cy={cy} r={R + 6} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth={12} />
+
+        {/* Background arc */}
+        <path
+          d={buildArcPath(cx, cy, R, START, END)}
+          fill="none"
+          stroke="rgba(255,255,255,0.07)"
+          strokeWidth={12}
+          strokeLinecap="round"
+        />
+
+        {/* Colored speed arc */}
+        {fraction > 0.005 && (
+          <path
+            d={buildArcPath(cx, cy, R, START, Math.min(speedAngle, END - 0.1))}
+            fill="none"
+            stroke={arcColor}
+            strokeWidth={12}
+            strokeLinecap="round"
+            style={{ filter: `drop-shadow(0 0 6px ${arcColor})`, transition: 'stroke 0.15s' }}
+          />
+        )}
+
+        {/* Tick marks */}
+        {ticks.map(v => {
+          const a = START + (v / MAX) * SWEEP;
+          const inner = polarToCartesian(cx, cy, R - 18, a);
+          const outer = polarToCartesian(cx, cy, R - 6, a);
+          const label = polarToCartesian(cx, cy, R - 32, a);
+          const isMajor = v % 40 === 0;
+          return (
+            <g key={v}>
+              <line
+                x1={inner.x} y1={inner.y}
+                x2={outer.x} y2={outer.y}
+                stroke={isMajor ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)'}
+                strokeWidth={isMajor ? 2 : 1}
+              />
+              {isMajor && (
+                <text
+                  x={label.x} y={label.y}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fill="rgba(255,255,255,0.38)"
+                  fontSize="9"
+                  fontFamily='"Courier New", monospace'
+                >
+                  {v}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Needle */}
+        <polygon
+          points={`${needleTip.x.toFixed(1)},${needleTip.y.toFixed(1)} ${needleBase1.x.toFixed(1)},${needleBase1.y.toFixed(1)} ${needleBase2.x.toFixed(1)},${needleBase2.y.toFixed(1)}`}
+          fill={arcColor}
+          opacity={0.9}
+          style={{ transition: 'none' }}
+        />
+        {/* Needle center cap */}
+        <circle cx={cx} cy={cy} r={7} fill="rgba(30,30,30,1)" stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} />
+
+        {/* Speed number */}
+        <text
+          x={cx} y={cy - 6}
+          textAnchor="middle" dominantBaseline="middle"
+          fill="white"
+          fontSize={speedKmh >= 100 ? 40 : 44}
+          fontWeight="900"
+          fontFamily='"Courier New", monospace'
+          style={{ textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}
+        >
+          {speedKmh}
+        </text>
+
+        {/* km/h label */}
+        <text
+          x={cx} y={cy + 20}
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.35)"
+          fontSize="10"
+          fontFamily='"Courier New", monospace'
+          fontWeight="700"
+          letterSpacing="2"
+        >
+          KM/H
+        </text>
+
+        {/* Gear indicator box */}
+        <rect
+          x={cx - 20} y={cy + 34}
+          width={40} height={30}
+          rx={6}
+          fill="rgba(255,140,0,0.12)"
+          stroke={gear >= 5 ? '#ff6600' : gear >= 3 ? '#ffaa00' : 'rgba(255,140,0,0.5)'}
+          strokeWidth={1.5}
+        />
+        <text
+          x={cx} y={cy + 52}
+          textAnchor="middle" dominantBaseline="middle"
+          fill={gear >= 5 ? '#ff8833' : gear >= 3 ? '#ffcc44' : '#aaaaaa'}
+          fontSize="16"
+          fontWeight="900"
+          fontFamily='"Courier New", monospace'
+        >
+          {gear}
+        </text>
+        <text
+          x={cx - 14} y={cy + 38}
+          fill="rgba(255,140,0,0.45)"
+          fontSize="7"
+          fontFamily="monospace"
+          fontWeight="700"
+        >
+          GEAR
+        </text>
+
+        {/* Speed bar at the bottom */}
+        <rect x={10} y={H - 14} width={W - 20} height={5} rx={2.5} fill="rgba(255,255,255,0.06)" />
+        <rect
+          x={10} y={H - 14}
+          width={Math.max(0, (W - 20) * fraction)}
+          height={5}
+          rx={2.5}
+          fill={arcColor}
+          style={{ transition: 'width 0.1s, fill 0.15s', filter: `drop-shadow(0 0 4px ${arcColor})` }}
+        />
+      </svg>
+    </div>
+  );
+}
+
 // ── Mini-map ──
 function MiniMap({ waypoints, progress }: { waypoints: [number, number, number][], progress: number }) {
-  const SIZE = 130;
-  const PAD = 12;
+  const SIZE = 155;
+  const PAD = 14;
   const xs = waypoints.map(w => w[0]);
   const zs = waypoints.map(w => w[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -59,7 +256,7 @@ function MiniMap({ waypoints, progress }: { waypoints: [number, number, number][
 
   const toSvg = (x: number, z: number) => ({
     x: ox + (x - minX) * scale,
-    y: oz + (maxZ - z) * scale,  // inversé : départ en bas, arrivée en haut
+    y: oz + (maxZ - z) * scale,
   });
 
   const pts = waypoints.map(([x, z]) => {
@@ -67,7 +264,6 @@ function MiniMap({ waypoints, progress }: { waypoints: [number, number, number][
     return `${p.x},${p.y}`;
   }).join(' ');
 
-  // Car position: interpolate along waypoints by progress
   const n = waypoints.length - 1;
   const fi = progress * n;
   const i = Math.min(Math.floor(fi), n - 1);
@@ -77,28 +273,134 @@ function MiniMap({ waypoints, progress }: { waypoints: [number, number, number][
   const carX = ax + (bx - ax) * frac;
   const carZ = az + (bz - az) * frac;
   const carPt = toSvg(carX, carZ);
+  const startPt = toSvg(waypoints[0][0], waypoints[0][1]);
+  const endPt = toSvg(waypoints[n][0], waypoints[n][1]);
 
   return (
     <div style={{
-      background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
-      borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden',
+      background: 'rgba(0,0,0,0.80)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: 14,
+      border: '1px solid rgba(255,255,255,0.12)',
+      overflow: 'hidden',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)',
     }}>
+      {/* Header */}
+      <div style={{
+        padding: '5px 10px 3px',
+        fontSize: 9,
+        fontFamily: 'monospace',
+        fontWeight: 700,
+        color: 'rgba(255,180,80,0.8)',
+        letterSpacing: 2,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        CARTE
+      </div>
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-        {/* Track */}
-        <polyline points={pts} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Track background shadow */}
+        <polyline points={pts} fill="none" stroke="rgba(0,0,0,0.5)" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Track base */}
+        <polyline points={pts} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
         {/* Completed part */}
         <polyline points={
           waypoints.slice(0, i + 2).map(([x, z]) => {
             const p = toSvg(x, z); return `${p.x},${p.y}`;
           }).join(' ')
-        } fill="none" stroke="#ff8833" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-        {/* Start */}
-        <circle cx={toSvg(waypoints[0][0], waypoints[0][1]).x} cy={toSvg(waypoints[0][0], waypoints[0][1]).y} r="4" fill="#00ff88" />
-        {/* Finish */}
-        <circle cx={toSvg(waypoints[n][0], waypoints[n][1]).x} cy={toSvg(waypoints[n][0], waypoints[n][1]).y} r="4" fill="#ff2222" />
-        {/* Car */}
-        <circle cx={carPt.x} cy={carPt.y} r="5" fill="#ffffff" stroke="#ff8833" strokeWidth="2" />
+        } fill="none" stroke="#ff7733" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"
+          style={{ filter: 'drop-shadow(0 0 3px rgba(255,100,0,0.6))' }}
+        />
+        {/* Start marker */}
+        <circle cx={startPt.x} cy={startPt.y} r={5} fill="#00ff88" style={{ filter: 'drop-shadow(0 0 3px #00ff88)' }} />
+        {/* Finish marker */}
+        <circle cx={endPt.x} cy={endPt.y} r={5} fill="#ff2222" style={{ filter: 'drop-shadow(0 0 3px #ff2222)' }} />
+        {/* Car dot */}
+        <circle cx={carPt.x} cy={carPt.y} r={6} fill="#ffffff" stroke="#ff7733" strokeWidth={2.5}
+          style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.8))' }} />
       </svg>
+    </div>
+  );
+}
+
+// ── Rally Timer ──
+function RallyTimer({ elapsedMs, bestTime, isRacing }: { elapsedMs: number, bestTime: number | null, isRacing: boolean }) {
+  const minutes = Math.floor(elapsedMs / 60000);
+  const seconds = Math.floor((elapsedMs % 60000) / 1000);
+  const ms = Math.floor((elapsedMs % 1000) / 10);
+  const mainTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const msStr = ms.toString().padStart(2, '0');
+
+  return (
+    <div style={{
+      background: isRacing
+        ? 'linear-gradient(180deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.68) 100%)'
+        : 'rgba(0,0,0,0.50)',
+      backdropFilter: 'blur(10px)',
+      borderRadius: 14,
+      padding: '8px 24px 10px',
+      border: `1px solid ${isRacing ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.07)'}`,
+      transition: 'border 0.3s, background 0.3s',
+      minWidth: 280,
+      textAlign: 'center',
+      boxShadow: isRacing ? '0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)' : 'none',
+    }}>
+      {/* Label */}
+      <div style={{
+        fontSize: 9,
+        fontFamily: 'monospace',
+        fontWeight: 700,
+        letterSpacing: 3,
+        color: isRacing ? 'rgba(255,160,60,0.8)' : 'rgba(255,255,255,0.2)',
+        marginBottom: 2,
+        transition: 'color 0.3s',
+      }}>
+        ⏱ CHRONO
+      </div>
+
+      {/* Main time display */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 0 }}>
+        {/* M:SS */}
+        <span style={{
+          fontSize: 56,
+          fontFamily: '"Courier New", monospace',
+          fontWeight: 900,
+          letterSpacing: 2,
+          color: isRacing ? '#ffffff' : 'rgba(255,255,255,0.3)',
+          lineHeight: 1,
+          textShadow: isRacing ? '0 2px 12px rgba(0,0,0,0.6)' : 'none',
+          transition: 'color 0.3s',
+        }}>
+          {mainTime}
+        </span>
+        {/* .mm */}
+        <span style={{
+          fontSize: 30,
+          fontFamily: '"Courier New", monospace',
+          fontWeight: 900,
+          color: isRacing ? 'rgba(255,200,80,0.9)' : 'rgba(255,255,255,0.15)',
+          lineHeight: 1,
+          paddingBottom: 4,
+          minWidth: '2.2ch',
+          textAlign: 'left',
+          transition: 'color 0.3s',
+        }}>
+          .{msStr}
+        </span>
+      </div>
+
+      {/* Best time */}
+      {bestTime !== null && (
+        <div style={{
+          fontSize: 11,
+          fontFamily: 'monospace',
+          color: '#ffd700',
+          letterSpacing: 2,
+          marginTop: 2,
+          opacity: 0.9,
+        }}>
+          🏆 BEST {formatTime(bestTime)}
+        </div>
+      )}
     </div>
   );
 }
@@ -126,9 +428,9 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
   );
   const [elapsedMs, setElapsedMs] = useState(0);
   const [speedKmh, setSpeedKmh] = useState(0);
-  const [stageProgress, setStageProgress] = useState(0); // 0-1 along the stage
+  const [stageProgress, setStageProgress] = useState(0);
   const [raceState, setRaceState] = useState<RaceState>('countdown');
-  const [countdownStep, setCountdownStep] = useState(3); // 3,2,1,0=GO
+  const [countdownStep, setCountdownStep] = useState(3);
   const [finishTime, setFinishTime] = useState(0);
   const [bestTime, setBestTime] = useState<number | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -182,7 +484,6 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
     });
     engineRef.current = engine;
 
-    // Resume audio on first touch (mobile AudioContext restriction)
     const resumeOnTouch = () => { engine.resumeAudio(); };
     document.addEventListener('touchstart', resumeOnTouch, { once: true });
     document.addEventListener('mousedown', resumeOnTouch, { once: true });
@@ -234,12 +535,7 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           pointerEvents: 'none',
           background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)',
         }}>
-          {/* Stage name banner */}
-          <div style={{
-            marginBottom: 24,
-            textAlign: 'center',
-            animation: 'fadeInUp 0.5s ease',
-          }}>
+          <div style={{ marginBottom: 24, textAlign: 'center', animation: 'fadeInUp 0.5s ease' }}>
             <div style={{ fontSize: 11, color: '#ff9944', letterSpacing: 4, fontWeight: 700, marginBottom: 4 }}>
               SPÉCIALE CHRONOMÉTRÉE
             </div>
@@ -274,83 +570,75 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         </div>
       )}
 
-      {/* ═══════════════ MAIN TIMER (top-center, Trackmania style) ═══════════════ */}
+      {/* ═══════════════ MAIN TIMER (top-center) ═══════════════ */}
       <div style={{
-        position: 'absolute', top: 16, left: '50%',
+        position: 'absolute', top: 14, left: '50%',
         transform: 'translateX(-50%)',
         pointerEvents: 'none',
         textAlign: 'center',
       }}>
-        <div style={{
-          background: isRacing
-            ? 'linear-gradient(180deg, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.55) 100%)'
-            : 'rgba(0,0,0,0.45)',
-          backdropFilter: 'blur(6px)',
-          borderRadius: 12,
-          padding: '8px 28px 10px',
-          border: `1px solid ${isRacing ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
-          transition: 'border 0.3s',
-          minWidth: 260,
-        }}>
-          <div style={{
-            fontSize: 54,
-            fontFamily: '"Courier New", monospace',
-            fontWeight: 900,
-            letterSpacing: 3,
-            color: isRacing ? '#ffffff' : 'rgba(255,255,255,0.4)',
-            lineHeight: 1,
-            textShadow: isRacing ? '0 2px 12px rgba(0,0,0,0.5)' : 'none',
-            transition: 'color 0.3s',
-          }}>
-            {formatTime(elapsedMs)}
-          </div>
-          {bestTime !== null && (
-            <div style={{ fontSize: 12, color: '#ffd700', letterSpacing: 2, marginTop: 4, opacity: 0.85 }}>
-              BEST {formatTime(bestTime)}
-            </div>
-          )}
-        </div>
+        <RallyTimer elapsedMs={elapsedMs} bestTime={bestTime} isRacing={isRacing} />
       </div>
 
       {/* ═══════════════ STAGE PROGRESS (top right) ═══════════════ */}
       <div style={{
-        position: 'absolute', top: 16, right: 20,
+        position: 'absolute', top: 14, right: 18,
         pointerEvents: 'none',
-        minWidth: 110,
+        minWidth: 118,
       }}>
         <div style={{
-          background: 'rgba(0,0,0,0.65)',
-          backdropFilter: 'blur(6px)',
-          borderRadius: 10,
-          padding: '10px 16px',
+          background: 'rgba(0,0,0,0.80)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: 12,
+          padding: '10px 16px 12px',
           border: '1px solid rgba(255,255,255,0.12)',
           textAlign: 'center',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)',
         }}>
-          <div style={{ fontSize: 10, color: '#aa6633', letterSpacing: 2, marginBottom: 6, fontWeight: 700 }}>SPÉCIALE</div>
-          {/* Progress bar — sunset orange */}
           <div style={{
-            width: '100%', height: 6,
-            background: 'rgba(255,150,50,0.15)',
-            borderRadius: 3, overflow: 'hidden',
-            marginBottom: 6,
+            fontSize: 9,
+            fontFamily: 'monospace',
+            fontWeight: 700,
+            color: 'rgba(255,160,60,0.8)',
+            letterSpacing: 2,
+            marginBottom: 7,
+          }}>
+            SPÉCIALE
+          </div>
+          {/* Progress bar */}
+          <div style={{
+            width: '100%', height: 7,
+            background: 'rgba(255,150,50,0.10)',
+            borderRadius: 4, overflow: 'hidden',
+            marginBottom: 7,
           }}>
             <div style={{
               width: `${Math.min(stageProgress * 100, 100).toFixed(1)}%`,
               height: '100%',
-              background: stageProgress > 0.9 ? '#ffd700' : 'linear-gradient(90deg, #cc4400, #ff8833)',
-              borderRadius: 3,
+              background: stageProgress > 0.9
+                ? 'linear-gradient(90deg, #ffaa00, #ffd700)'
+                : 'linear-gradient(90deg, #cc4400, #ff8833)',
+              borderRadius: 4,
               transition: 'width 0.2s, background 0.3s',
+              boxShadow: stageProgress > 0.9 ? '0 0 8px rgba(255,200,0,0.5)' : 'none',
             }} />
           </div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#ffcc88', lineHeight: 1 }}>
-            {Math.min(Math.round(stageProgress * 100), 100)}<span style={{ fontSize: 12, opacity: 0.5 }}>%</span>
+          <div style={{
+            fontSize: 22,
+            fontFamily: '"Courier New", monospace',
+            fontWeight: 900,
+            color: stageProgress > 0.9 ? '#ffd700' : '#ffcc88',
+            lineHeight: 1,
+          }}>
+            {Math.min(Math.round(stageProgress * 100), 100)}
+            <span style={{ fontSize: 11, opacity: 0.45 }}>%</span>
           </div>
         </div>
       </div>
 
       {/* ═══════════════ CHECKPOINT SPLITS (center-right) ═══════════════ */}
       <div style={{
-        position: 'absolute', top: '50%', right: 20,
+        position: 'absolute', top: '50%', right: 18,
         transform: 'translateY(-50%)',
         pointerEvents: 'none',
         display: 'flex', flexDirection: 'column', gap: 8,
@@ -363,17 +651,15 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
           return (
             <div key={id} style={{
               background: isGreen ? 'rgba(0,200,100,0.9)' : isRed ? 'rgba(220,60,60,0.9)' : 'rgba(255,200,0,0.9)',
-              borderRadius: 8,
-              padding: '8px 16px',
+              borderRadius: 10,
+              padding: '8px 18px',
               animation: 'splitIn 0.25s cubic-bezier(0.2, 1.4, 0.4, 1)',
               boxShadow: `0 4px 20px ${isGreen ? 'rgba(0,200,100,0.4)' : isRed ? 'rgba(220,60,60,0.4)' : 'rgba(255,200,0,0.4)'}`,
             }}>
               <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.6)', letterSpacing: 2, fontWeight: 700 }}>
                 SPLIT {split.index + 1}
               </div>
-              <div style={{
-                fontSize: 22, fontFamily: 'monospace', fontWeight: 900, color: '#000', lineHeight: 1,
-              }}>
+              <div style={{ fontSize: 22, fontFamily: 'monospace', fontWeight: 900, color: '#000', lineHeight: 1 }}>
                 {delta !== null
                   ? `${delta > 0 ? '+' : ''}${formatTime(Math.abs(delta))}`
                   : formatTime(split.elapsedMs)
@@ -385,76 +671,39 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
       </div>
 
       {/* ═══════════════ MINI-MAP (top left) ═══════════════ */}
-      <div style={{ position: 'absolute', top: 16, left: 16, pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', top: 14, left: 14, pointerEvents: 'none' }}>
         <MiniMap waypoints={MAP_CONFIGS[mapId].waypoints} progress={stageProgress} />
       </div>
 
-      {/* ═══════════════ SPEEDOMETER (bottom center) ═══════════════ */}
+      {/* ═══════════════ SPEEDOMETER (bottom center-right) ═══════════════ */}
       <div style={{
-        position: 'absolute', bottom: 130, left: '50%',
-        transform: 'translateX(-50%)',
+        position: 'absolute',
+        bottom: isTouchDevice ? 140 : 20,
+        right: isTouchDevice ? '50%' : 20,
+        transform: isTouchDevice ? 'translateX(50%)' : 'none',
         pointerEvents: 'none',
-        textAlign: 'center',
       }}>
-        <div style={{
-          background: 'rgba(0,0,0,0.72)',
-          backdropFilter: 'blur(8px)',
-          borderRadius: 16,
-          padding: '10px 28px 8px',
-          border: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex', alignItems: 'baseline', gap: 4,
-          boxShadow: speedKmh > 80 ? '0 0 24px rgba(255,120,0,0.25)' : 'none',
-          transition: 'box-shadow 0.3s',
-        }}>
-          <span style={{
-            fontSize: 52,
-            fontFamily: '"Courier New", monospace',
-            fontWeight: 900,
-            lineHeight: 1,
-            color: speedKmh > 100 ? '#ff8833' : speedKmh > 60 ? '#ffcc44' : '#ffffff',
-            transition: 'color 0.2s',
-            minWidth: '3ch',
-            textAlign: 'right',
-          }}>
-            {speedKmh}
-          </span>
-          <span style={{ fontSize: 14, color: '#666', fontWeight: 700, paddingBottom: 4 }}>km/h</span>
-        </div>
-        {/* Speed bar */}
-        <div style={{
-          width: '100%', height: 3, marginTop: 6,
-          background: 'rgba(255,255,255,0.08)',
-          borderRadius: 2, overflow: 'hidden',
-        }}>
-          <div style={{
-            width: `${Math.min((speedKmh / 130) * 100, 100)}%`,
-            height: '100%',
-            background: speedKmh > 100
-              ? 'linear-gradient(90deg, #ff6600, #ff2200)'
-              : speedKmh > 60
-              ? 'linear-gradient(90deg, #ffcc00, #ff8800)'
-              : 'linear-gradient(90deg, #00cc66, #00ffaa)',
-            borderRadius: 2,
-            transition: 'width 0.1s, background 0.2s',
-          }} />
-        </div>
+        <Speedometer speedKmh={speedKmh} />
       </div>
 
-      {/* ═══════════════ CONTROLS HINT — desktop only (bottom right) ═══════════════ */}
-      <div style={{
-        position: 'absolute', bottom: 16, right: 16,
-        pointerEvents: 'none',
-      }}>
+      {/* ═══════════════ CONTROLS HINT — desktop only ═══════════════ */}
+      {!isTouchDevice && (
         <div style={{
-          background: 'rgba(0,0,0,0.45)',
-          borderRadius: 8,
-          padding: '6px 12px',
-          border: '1px solid rgba(255,255,255,0.06)',
-          fontSize: 11, color: '#555', letterSpacing: 0.5,
+          position: 'absolute', bottom: 16, left: '50%',
+          transform: 'translateX(-50%)',
+          pointerEvents: 'none',
         }}>
-          ZQSD / ↑↓←→ &nbsp;•&nbsp; <span style={{ color: '#f90' }}>Space</span> Drift &nbsp;•&nbsp; <span style={{ color: '#888' }}>R</span> Restart
+          <div style={{
+            background: 'rgba(0,0,0,0.45)',
+            borderRadius: 8,
+            padding: '6px 14px',
+            border: '1px solid rgba(255,255,255,0.06)',
+            fontSize: 11, color: '#555', letterSpacing: 0.5,
+          }}>
+            ZQSD / ↑↓←→ &nbsp;•&nbsp; <span style={{ color: '#f90' }}>Space</span> Drift &nbsp;•&nbsp; <span style={{ color: '#888' }}>R</span> Restart
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ═══════════════ TOUCH CONTROLS — mobile uniquement ═══════════════ */}
       {isTouchDevice && raceState !== 'finished' && (

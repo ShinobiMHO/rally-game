@@ -1066,6 +1066,7 @@ export class GameEngine {
     this.buildMountains(rng);
     this.buildTallGrass(rng);
     this.buildRallySigns(rng);
+    this.buildMarshalFlags(rng);
     // buildLeafShadows supprimé — trop de draw calls
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
@@ -1364,6 +1365,37 @@ export class GameEngine {
       patch.rotation.z = rngL() * Math.PI;
       patch.position.set(x, y, z);
       this.scene.add(patch);
+    }
+  }
+
+  private buildMarshalFlags(rng: () => number) {
+    // Drapeaux de commissaires jaunes + triangles de danger aux bords de piste
+    const rngF = this.seededRng(567);
+    const totalPts = this.trackPoints.length;
+    const hw = this.mapConfig.trackWidth / 2;
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6, metalness: 0.2 });
+
+    for (let i = 12; i < totalPts - 12; i += Math.floor(18 + rngF() * 20)) {
+      const tp = this.trackPoints[i];
+      const tangent = tp.tangent.clone().normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      const side = rngF() > 0.5 ? 1 : -1;
+      const pos = tp.center.clone().addScaledVector(normal, side * (hw + 1.8));
+
+      // Mât
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.5, 5), postMat);
+      mast.position.set(pos.x, tp.center.y + 1.75, pos.z);
+      this.scene.add(mast);
+
+      // Drapeau jaune (triangle ou rectangle)
+      const flagColor = rngF() > 0.3 ? 0xffd600 : 0xff2222; // jaune ou rouge
+      const flagMat = new THREE.MeshStandardMaterial({ color: flagColor, roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), flagMat);
+      flag.position.set(pos.x + Math.cos(Math.atan2(tangent.x, tangent.z)) * 0.45,
+                        tp.center.y + 3.2,
+                        pos.z + Math.sin(Math.atan2(tangent.x, tangent.z)) * 0.45);
+      flag.rotation.y = Math.atan2(tangent.x, tangent.z);
+      this.scene.add(flag);
     }
   }
 
@@ -1844,19 +1876,21 @@ export class GameEngine {
   }
 
   private buildSkyDome() {
-    // Ciel de jour — horizon blanc-bleu → zenith bleu profond
-    const skyGeo = new THREE.SphereGeometry(500, 32, 16);
+    // Ciel de jour — horizon → zénith, gradient riche
+    const skyGeo = new THREE.SphereGeometry(500, 64, 16);
     const posAttr = skyGeo.attributes.position as THREE.BufferAttribute;
     const colors: number[] = [];
-    const horizonColor = new THREE.Color(0xddf0ff); // horizon blanc laiteux
-    const midColor    = new THREE.Color(0x6ab4e8);  // bleu clair
-    const zenithColor = new THREE.Color(0x2472c8);  // bleu profond zenith
+    const groundHaze  = new THREE.Color(0xfff8f0); // haze chaud à l'horizon bas
+    const horizonColor = new THREE.Color(0xc8e8ff); // horizon bleu très pâle
+    const midColor    = new THREE.Color(0x5ba8e0);  // bleu moyen
+    const zenithColor = new THREE.Color(0x1a6abf);  // bleu profond zénith
     for (let i = 0; i < posAttr.count; i++) {
       const y = posAttr.getY(i);
-      const t = Math.max(0, Math.min(1, y / 500));  // 0 = horizon, 1 = zenith
+      const t = Math.max(-0.15, Math.min(1, y / 500));
       const c = new THREE.Color();
-      if (t < 0.35) c.lerpColors(horizonColor, midColor, t / 0.35);
-      else          c.lerpColors(midColor, zenithColor, (t - 0.35) / 0.65);
+      if (t < 0)      c.lerpColors(groundHaze, horizonColor, (t + 0.15) / 0.15);
+      else if (t < 0.3) c.lerpColors(horizonColor, midColor, t / 0.3);
+      else            c.lerpColors(midColor, zenithColor, (t - 0.3) / 0.7);
       colors.push(c.r, c.g, c.b);
     }
     skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
