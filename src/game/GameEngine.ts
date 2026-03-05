@@ -259,14 +259,37 @@ export class GameEngine {
       indices.push(a, c, b, b, c, d);
     }
 
+    // Vertex colors — chemin de terre : bords sombres (herbe/boue), centre plus clair
+    const roadColors: number[] = [];
+    const centerColor = new THREE.Color(0x8a5a2a); // terre sèche
+    const edgeColor   = new THREE.Color(0x3a2210); // bords boueux très sombres
+    for (let i = 0; i <= divisions; i++) {
+      roadColors.push(edgeColor.r, edgeColor.g, edgeColor.b);   // gauche
+      roadColors.push(edgeColor.r, edgeColor.g, edgeColor.b);   // droite
+    }
+    // Re-color center strip slightly lighter (modulate existing vertices)
+    // Actually: left vertex = edge, right vertex = edge, center calculated on-the-fly
+    // Use a simpler approach — per-vertex based on U coordinate (0=left, 1=right)
+    // We'll just set edge verts darker and leave the strip itself the center color
+    // Since we only have 2 verts per row (L and R), apply a mild variation
+    const roadColorsF: number[] = [];
+    const rngRoad = this.seededRng(787);
+    for (let i = 0; i <= divisions; i++) {
+      const variation = (rngRoad() - 0.5) * 0.06;
+      const lc = edgeColor.clone().lerp(centerColor, 0.3 + variation);
+      const rc = edgeColor.clone().lerp(centerColor, 0.35 + variation);
+      roadColorsF.push(lc.r, lc.g, lc.b, rc.r, rc.g, rc.b);
+    }
+
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(roadColorsF, 3));
     geo.setIndex(indices);
 
-    // Dirt road texture — mix of two tones
-    const mat = new THREE.MeshLambertMaterial({ color: this.mapConfig.roadColor });
+    // Dirt road — vertex colored for texture variation
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true;
     this.scene.add(road);
