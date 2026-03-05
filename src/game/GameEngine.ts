@@ -815,6 +815,62 @@ export class GameEngine {
     // ── Lakes ──
     this.buildLakes(rng);
 
+    // ── Arbres automnaux (dorés/rouges) — coucher de soleil ──
+    const autumnMats = [
+      new THREE.MeshLambertMaterial({ color: 0xcc7722 }), // orange
+      new THREE.MeshLambertMaterial({ color: 0xaa3311 }), // rouge
+      new THREE.MeshLambertMaterial({ color: 0xddaa22 }), // or
+    ];
+    const rng3 = this.seededRng(199);
+    for (let i = 0; i < 60; i++) {
+      const x = (rng3() - 0.5) * 600;
+      const z = (rng3() - 0.5) * 1200; // spread along full track length
+      let minDist = Infinity;
+      for (const tp of this.trackPoints) {
+        const d = new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z));
+        if (d < minDist) minDist = d;
+      }
+      if (minDist < this.mapConfig.trackWidth * 2 || minDist > 80) continue;
+      const tY = this.getTerrainY(x, z);
+      const h = 5 + rng3() * 7;
+      const r = 2 + rng3() * 2.5;
+      const mat = autumnMats[Math.floor(rng3() * autumnMats.length)];
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, h * 0.4, 5), trunkMat);
+      trunk.position.y = h * 0.2;
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 5), mat);
+      crown.position.y = h * 0.65;
+      crown.scale.y = 0.75;
+      const t = new THREE.Group();
+      t.add(trunk, crown);
+      t.position.set(x, tY, z);
+      t.rotation.y = rng3() * Math.PI * 2;
+      this.scene.add(t);
+    }
+
+    // ── Patches de boue et ornières sur la route ──
+    const roadMudMat = new THREE.MeshBasicMaterial({ color: 0x4a2e10, transparent: true, opacity: 0.55, depthWrite: false });
+    const roadPuddleMat = new THREE.MeshBasicMaterial({ color: 0x3a5a70, transparent: true, opacity: 0.65, depthWrite: false });
+    const rngMud = this.seededRng(77);
+    for (let i = 10; i < this.trackPoints.length - 10; i += Math.floor(8 + rngMud() * 15)) {
+      const tp = this.trackPoints[i];
+      const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
+      const hw = this.mapConfig.trackWidth;
+      const isPuddle = rngMud() < 0.3;
+      const mat = isPuddle ? roadPuddleMat : roadMudMat;
+      const w = 2 + rngMud() * 6;
+      const len = 3 + rngMud() * 8;
+      const off = (rngMud() - 0.5) * (hw * 0.6);
+      const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+      const pos = tp.center.clone().addScaledVector(perp, off);
+      const patchGrp = new THREE.Group();
+      patchGrp.rotation.y = angle;
+      patchGrp.position.set(pos.x, tp.center.y + 0.04, pos.z);
+      const patch = new THREE.Mesh(new THREE.PlaneGeometry(w, len), mat);
+      patch.rotation.x = -Math.PI / 2;
+      patchGrp.add(patch);
+      this.scene.add(patchGrp);
+    }
+
     // ── Rocks ──
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x6f6a60 });
     for (let i = 0; i < 70; i++) {
