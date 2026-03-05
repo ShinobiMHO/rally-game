@@ -59,7 +59,7 @@ function MiniMap({ waypoints, progress }: { waypoints: [number, number, number][
 
   const toSvg = (x: number, z: number) => ({
     x: ox + (x - minX) * scale,
-    y: oz + (z - minZ) * scale,
+    y: oz + (maxZ - z) * scale,  // inversé : départ en bas, arrivée en haut
   });
 
   const pts = waypoints.map(([x, z]) => {
@@ -121,6 +121,9 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
 
+  const [isTouchDevice] = useState(() =>
+    typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  );
   const [elapsedMs, setElapsedMs] = useState(0);
   const [speedKmh, setSpeedKmh] = useState(0);
   const [stageProgress, setStageProgress] = useState(0); // 0-1 along the stage
@@ -453,8 +456,8 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         </div>
       </div>
 
-      {/* ═══════════════ TOUCH CONTROLS — mobile ═══════════════ */}
-      {raceState !== 'finished' && (
+      {/* ═══════════════ TOUCH CONTROLS — mobile uniquement ═══════════════ */}
+      {isTouchDevice && raceState !== 'finished' && (
         <>
           {/* Steering gauche */}
           <div style={{
