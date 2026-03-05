@@ -179,6 +179,11 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
     });
     engineRef.current = engine;
 
+    // Resume audio on first touch (mobile AudioContext restriction)
+    const resumeOnTouch = () => { engine.resumeAudio(); };
+    document.addEventListener('touchstart', resumeOnTouch, { once: true });
+    document.addEventListener('mousedown', resumeOnTouch, { once: true });
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
         engine.restart();
@@ -360,14 +365,14 @@ export default function GameCanvas({ nickname, carId, mapId, onMenu }: Props) {
         })}
       </div>
 
-      {/* ═══════════════ MINI-MAP + INFO (bottom left) ═══════════════ */}
-      <div style={{ position: 'absolute', bottom: 16, left: 16, pointerEvents: 'none' }}>
+      {/* ═══════════════ MINI-MAP (top left) ═══════════════ */}
+      <div style={{ position: 'absolute', top: 16, left: 16, pointerEvents: 'none' }}>
         <MiniMap waypoints={MAP_CONFIGS[mapId].waypoints} progress={stageProgress} />
       </div>
 
       {/* ═══════════════ SPEEDOMETER (bottom center) ═══════════════ */}
       <div style={{
-        position: 'absolute', bottom: 20, left: '50%',
+        position: 'absolute', bottom: 130, left: '50%',
         transform: 'translateX(-50%)',
         pointerEvents: 'none',
         textAlign: 'center',

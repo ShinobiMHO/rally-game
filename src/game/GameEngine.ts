@@ -526,9 +526,9 @@ export class GameEngine {
   }
 
   private buildTunnel() {
-    // Build tunnel arches from t=0.75 to t=0.92
-    const tStart = 0.75;
-    const tEnd = 0.91;
+    // Build tunnel arches — tunnel is wp 22-24 of 27 → t ≈ 0.80 to 0.90
+    const tStart = 0.80;
+    const tEnd = 0.90;
     const totalPts = this.trackPoints.length;
     const idxStart = Math.floor(tStart * totalPts);
     const idxEnd = Math.floor(tEnd * totalPts);
@@ -1279,8 +1279,12 @@ export class GameEngine {
     this.updateTimer(now);
     this.checkProgress();
     this.updateAudio();
-    // Speed in km/h (game units × ~4.5 to feel like real km/h)
+    // Speed in km/h
     this.callbacks.onSpeedUpdate?.(Math.abs(this.physics.speed) * 4.5);
+    // FOV zoom at high speed (immersion)
+    const targetFov = 68 + Math.abs(this.physics.speed) * 0.22;
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, 0.05);
+    this.camera.updateProjectionMatrix();
   }
 
   // ─────────────── Physics ───────────────
@@ -1396,6 +1400,8 @@ export class GameEngine {
           const impact = Math.abs(this.verticalVel);
           // Perte de vitesse à l'impact proportionnelle à la hauteur de chute
           if (impact > 4) physics.speed *= Math.max(0.65, 1 - impact * 0.028);
+          // Son d'impact
+          if (impact > 5) this.playSound(120, 0.18, 'sawtooth', 0.12);
           this.verticalVel = 0;
           this.isAirborne = false;
         }
@@ -1587,9 +1593,15 @@ export class GameEngine {
     }
 
     this.skidTimer += dt;
-    if (Math.abs(this.physics.lateralVel) > 3.5 && Math.abs(this.physics.speed) > 4 && this.skidTimer > 0.06) {
+    if (Math.abs(this.physics.lateralVel) > 3.5 && Math.abs(this.physics.speed) > 4) {
+      if (this.skidTimer > 0.06) {
+        this.skidTimer = 0;
+        this.addSkidMark();
+        // Son de dérapage léger
+        if (Math.random() < 0.15) this.playSound(180 + Math.random() * 80, 0.12, 'sawtooth', 0.025);
+      }
+    } else {
       this.skidTimer = 0;
-      this.addSkidMark();
     }
 
     this.particles = this.particles.filter(p => {
