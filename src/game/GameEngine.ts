@@ -1068,6 +1068,7 @@ export class GameEngine {
     this.buildRallySigns(rng);
     this.buildMarshalFlags(rng);
     this.buildCenterLine();
+    this.buildHayBales();
     // buildLeafShadows supprimé — trop de draw calls
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
@@ -1366,6 +1367,66 @@ export class GameEngine {
       patch.rotation.z = rngL() * Math.PI;
       patch.position.set(x, y, z);
       this.scene.add(patch);
+    }
+  }
+
+  private buildHayBales() {
+    // Bottes de foin WRC aux bords intérieurs des virages serrés
+    const rng = this.seededRng(444);
+    const hayMat = new THREE.MeshStandardMaterial({
+      color: 0xd4a842,
+      roughness: 1.0,
+      metalness: 0,
+    });
+
+    const hw = this.mapConfig.trackWidth / 2; // demi-largeur de piste
+    const N = this.trackPoints.length;
+    const LOOK = 8; // comparaison tangente sur ±8 points
+    let lastPlaced = -50;
+
+    for (let i = LOOK; i < N - LOOK; i += 4) {
+      if (i - lastPlaced < 20) continue; // espacement minimum entre groupes
+
+      const t1 = this.trackPoints[i - LOOK].tangent.clone().normalize();
+      const t2 = this.trackPoints[i + LOOK].tangent.clone().normalize();
+      const dot = Math.max(-1, Math.min(1, t1.dot(t2)));
+      const curvature = 1 - dot;
+
+      if (curvature < 0.10) continue; // seulement les virages serrés
+
+      // Côté intérieur du virage (produit vectoriel Y)
+      const cross = t1.x * t2.z - t1.z * t2.x;
+      const innerSide = cross > 0 ? -1 : 1;
+
+      const numBales = 2 + Math.floor(rng() * 3);   // 2–4 bottes par groupe
+      const numStacks = 1 + Math.floor(rng() * 2);  // 1–2 de haut
+
+      const tp = this.trackPoints[i];
+      const roadDir = tp.tangent.clone().normalize();
+      const perp = new THREE.Vector3(-roadDir.z, 0, roadDir.x);
+
+      for (let b = 0; b < numBales; b++) {
+        const forwardOffset = (b - (numBales - 1) / 2) * 1.9;
+        const lateralDist = hw + 0.5 + rng() * 0.5;
+
+        const pos = tp.center.clone()
+          .addScaledVector(perp, innerSide * lateralDist)
+          .addScaledVector(roadDir, forwardOffset);
+        pos.y = tp.center.y + 0.02;
+
+        for (let s = 0; s < numStacks; s++) {
+          const bale = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 1.2, 1.2),
+            hayMat,
+          );
+          bale.position.set(pos.x, pos.y + s * 1.2 + 0.6, pos.z);
+          bale.rotation.y = Math.atan2(roadDir.x, roadDir.z) + (rng() - 0.5) * 0.4;
+          bale.castShadow = true;
+          this.scene.add(bale);
+        }
+      }
+
+      lastPlaced = i;
     }
   }
 
@@ -2461,7 +2522,8 @@ export class GameEngine {
   }
 
   private addSkidMark() {
-    const mat = new THREE.MeshBasicMaterial({ color: 0x221100, transparent: true, opacity: 0.18, depthWrite: false });
+    // Couleur terre rouge-brune (rallye gravier)
+    const mat = new THREE.MeshBasicMaterial({ color: 0x5a2a0a, transparent: true, opacity: 0.28, depthWrite: false });
     for (const side of [-2.5, 2.5]) {
       const normal = new THREE.Vector3(Math.cos(this.physics.heading), 0, -Math.sin(this.physics.heading));
       const pos = this.physics.position.clone().addScaledVector(normal, side);
