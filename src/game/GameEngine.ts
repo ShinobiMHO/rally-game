@@ -704,7 +704,7 @@ export class GameEngine {
     const entryPt = cavePoints[0];
 
     // ── CASCADE à l'entrée ──
-    const waterMat = new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    const waterMat = new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
     const fallH = 12, fallW = hw * 2.2;
     for (let layer = 0; layer < 3; layer++) {
       const fall = new THREE.Mesh(new THREE.PlaneGeometry(fallW, fallH), waterMat);
@@ -830,7 +830,7 @@ export class GameEngine {
     }
 
     // Nuages / brume dans le vide en dessous
-    const mistMat = new THREE.MeshBasicMaterial({ color: 0xddeeff, transparent: true, opacity: 0.25, depthWrite: false });
+    const mistMat = new THREE.MeshBasicMaterial({ color: 0xddeeff, transparent: true, opacity: 0.08, depthWrite: false });
     const midCliff = cliffPoints[Math.floor(cliffPoints.length / 2)];
     if (midCliff) {
       for (let m = 0; m < 5; m++) {
@@ -1011,7 +1011,7 @@ export class GameEngine {
     }
 
     // ── Taches de boue sur la piste (40 patches) ──
-    const mudMat = new THREE.MeshBasicMaterial({ color: 0x6a4010, transparent: true, opacity: 0.55, depthWrite: false });
+    const mudMat = new THREE.MeshBasicMaterial({ color: 0x6a4010, transparent: true, opacity: 0.3, depthWrite: false });
     const trackLen = this.trackPoints.length;
     for (let i = 0; i < 40; i++) {
       const idx = Math.floor(rng() * trackLen);
@@ -1168,10 +1168,10 @@ export class GameEngine {
     }
 
     // ── Patches de boue et ornières sur la route ──
-    const roadMudMat = new THREE.MeshBasicMaterial({ color: 0x4a2e10, transparent: true, opacity: 0.55, depthWrite: false });
-    const roadPuddleMat = new THREE.MeshBasicMaterial({ color: 0x3a5a70, transparent: true, opacity: 0.65, depthWrite: false });
+    const roadMudMat = new THREE.MeshBasicMaterial({ color: 0x4a2e10, transparent: true, opacity: 0.3, depthWrite: false });
+    const roadPuddleMat = new THREE.MeshBasicMaterial({ color: 0x3a5a70, transparent: true, opacity: 0.35, depthWrite: false });
     const rngMud = this.seededRng(77);
-    for (let i = 10; i < this.trackPoints.length - 10; i += Math.floor(8 + rngMud() * 15)) {
+    for (let i = 35; i < this.trackPoints.length - 15; i += Math.floor(8 + rngMud() * 15)) {
       const tp = this.trackPoints[i];
       const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
       const hw = this.mapConfig.trackWidth;
@@ -1545,8 +1545,7 @@ export class GameEngine {
   private buildCar() {
     this.carGroup = new THREE.Group();
 
-    const carTex = this.createTexture('car-body', 512);
-    const white = new THREE.MeshStandardMaterial({ map: carTex, roughness: 0.35, metalness: 0.12, envMapIntensity: 0.6 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.35, metalness: 0.12 });
     const blue = new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.45, metalness: 0.1 });
     const red = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.45, metalness: 0.05 });
     const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.2 });
