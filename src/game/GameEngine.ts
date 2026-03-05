@@ -3,10 +3,10 @@ import type { MapConfig, CarConfig, CheckpointSplit, RaceState } from '@/types';
 
 interface PhysicsState {
   position: THREE.Vector3;
-  heading: number;       // car's facing direction (yaw)
-  velHeading: number;    // actual velocity direction (for drift)
-  speed: number;         // scalar speed along velHeading
-  lateralVel: number;    // perpendicular velocity (drift)
+  heading: number;
+  velHeading: number;
+  speed: number;
+  lateralVel: number;
 }
 
 interface InputState {
@@ -14,7 +14,7 @@ interface InputState {
   backward: boolean;
   left: boolean;
   right: boolean;
-  handbrake: boolean;  // Space — initiates drift/slide
+  handbrake: boolean;
 }
 
 interface TrackPoint {
@@ -32,9 +32,9 @@ interface CheckpointState {
 
 export type EngineCallback = {
   onTimerUpdate?: (ms: number) => void;
-  onCountdown?: (step: number) => void;   // 3, 2, 1, 0=GO
+  onCountdown?: (step: number) => void;
   onCheckpoint?: (split: CheckpointSplit) => void;
-  onProgressUpdate?: (t: number) => void; // 0→1 stage progress
+  onProgressUpdate?: (t: number) => void;
   onFinish?: (totalMs: number) => void;
   onStateChange?: (state: RaceState) => void;
 };
@@ -64,27 +64,20 @@ export class GameEngine {
   private elapsedMs = 0;
   private lastUpdateTime = 0;
   private currentLap = 0;
-  private totalLaps = 2;
+  private totalLaps = 1;
 
-  // Progress tracking
-  private lastCarT = 0;       // last known spline t position
-  private lapStartMs = 0;     // time at start of current lap
+  private lastCarT = 0;
+  private lapStartMs = 0;
 
-  // Checkpoints
   private checkpointStates: CheckpointState[] = [];
-  private bestSplits: number[] = []; // best elapsed time at each checkpoint (session)
+  private bestSplits: number[] = [];
   private bestTotalTime: number = Infinity;
-  private lapCheckpointIndex = 0; // how many checkpoints passed this lap
+  private lapCheckpointIndex = 0;
 
-  // Particles & effects
   private particles: THREE.Points[] = [];
-  private driftParticleTimer = 0;
-  private skidMarks: THREE.Mesh[] = [];
+  private dirtParticleTimer = 0;
 
-  // Audio
   private soundCtx: AudioContext | null = null;
-  private engineOscillator: OscillatorNode | null = null;
-  private engineGain: GainNode | null = null;
 
   private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private _keyupHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -103,21 +96,20 @@ export class GameEngine {
     this.input = { forward: false, backward: false, left: false, right: false, handbrake: false };
     this.initPhysics();
 
-    // Renderer
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Scene — forest sky (grey-green overcast)
-    const skyColor = new THREE.Color(0x6a8a5a).lerp(new THREE.Color(0x9ab0a0), 0.4);
+    // Forest overcast sky
+    const skyColor = new THREE.Color(0x7a9a6a);
     this.scene = new THREE.Scene();
     this.scene.background = skyColor;
-    this.scene.fog = new THREE.Fog(skyColor, 60, 200); // closer fog = denser forest feel
+    this.scene.fog = new THREE.FogExp2(0x889e78, 0.009); // exponential fog — denser at distance
 
-    // Camera
-    this.camera = new THREE.PerspectiveCamera(52, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
+    // Third-person camera — close, low, behind the car
+    this.camera = new THREE.PerspectiveCamera(72, canvas.clientWidth / canvas.clientHeight, 0.1, 600);
 
     this.setupLights();
     this.buildTrack();
@@ -128,7 +120,6 @@ export class GameEngine {
     this.bindKeys();
     window.addEventListener('resize', this.onResize);
 
-    // Start with countdown
     this.startCountdown();
     this.startLoop();
   }
@@ -148,7 +139,8 @@ export class GameEngine {
   private placeCarAtStart() {
     if (!this.spline) return;
     const startPt = this.trackPoints[0];
-    this.physics.position.set(startPt.center.x, 0.5, startPt.center.z);
+    const roadY = startPt.center.y;
+    this.physics.position.set(startPt.center.x, roadY + 0.55, startPt.center.z);
     const angle = Math.atan2(startPt.tangent.x, startPt.tangent.z);
     this.physics.heading = angle;
     this.physics.velHeading = angle;
@@ -187,12 +179,10 @@ export class GameEngine {
 
   private tickCountdown(dt: number) {
     this.countdownTimer += dt;
-    const target = 3 - this.countdownStep; // 0→1→2→3 seconds
     if (this.countdownTimer >= 1.0) {
       this.countdownTimer -= 1.0;
       this.countdownStep--;
       if (this.countdownStep <= 0) {
-        // GO!
         this.countdownStep = 0;
         this.callbacks.onCountdown?.(0);
         this.raceState = 'racing';
@@ -214,12 +204,13 @@ export class GameEngine {
     const wp = this.mapConfig.waypoints;
     const center = this.computeCenter(wp);
 
-    const points3D = wp.map(([x, z]) =>
-      new THREE.Vector3(x - center.x, 0, z - center.y)
+    // wp = [x, z_world, y_elevation]
+    const points3D = wp.map(([x, z, elev = 0]) =>
+      new THREE.Vector3(x - center.x, elev, z - center.y)
     );
     this.spline = new THREE.CatmullRomCurve3(points3D, false, 'catmullrom', 0.5);
 
-    const divisions = wp.length * 24;
+    const divisions = wp.length * 28;
     const hw = this.mapConfig.trackWidth / 2;
     const vertices: number[] = [];
     const indices: number[] = [];
@@ -231,11 +222,15 @@ export class GameEngine {
       const t = i / divisions;
       const pt = this.spline.getPoint(t);
       const tangent = this.spline.getTangent(t).normalize();
-      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      // Normal stays horizontal (roads don't bank — simplification)
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
       const left = pt.clone().add(normal.clone().multiplyScalar(hw));
       const right = pt.clone().sub(normal.clone().multiplyScalar(hw));
+      // Keep left/right at road Y (no banking)
+      left.y = pt.y;
+      right.y = pt.y;
       this.trackPoints.push({ center: pt.clone(), tangent, left, right });
-      vertices.push(left.x, 0.01, left.z, right.x, 0.01, right.z);
+      vertices.push(left.x, pt.y + 0.02, left.z, right.x, pt.y + 0.02, right.z);
       uvs.push(0, t * hw * 2, 1, t * hw * 2);
       normals.push(0, 1, 0, 0, 1, 0);
     }
@@ -250,98 +245,90 @@ export class GameEngine {
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
     geo.setIndex(indices);
 
+    // Dirt road texture — mix of two tones
     const mat = new THREE.MeshLambertMaterial({ color: this.mapConfig.roadColor });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true;
     this.scene.add(road);
 
-    // Road surface tint stripes for visual speed feel
-    this.buildLaneStripes(divisions);
-
-    // Start/finish
+    // Dirt tyre tracks (darker strips on road center)
+    this.buildTyreTracks(divisions);
     this.buildStartFinishLine();
-
-    // Barriers
     this.buildBarriers();
-
-    // Ground
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(1000, 1000, 4, 4),
-      new THREE.MeshLambertMaterial({ color: this.mapConfig.groundColor })
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
-
-    // Checkpoints
     this.buildCheckpoints();
   }
 
-  private computeCenter(wp: [number, number][]): { x: number; y: number } {
+  private computeCenter(wp: [number, number, number][]): { x: number; y: number } {
     let sx = 0, sy = 0;
-    for (const [x, y] of wp) { sx += x; sy += y; }
+    for (const [x, z] of wp) { sx += x; sy += z; }
     return { x: sx / wp.length, y: sy / wp.length };
   }
 
-  private buildLaneStripes(divisions: number) {
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
-    const step = 10;
+  private buildTyreTracks(divisions: number) {
+    // Two dark tyre marks along the road
+    const mat = new THREE.MeshBasicMaterial({ color: 0x5a3820, transparent: true, opacity: 0.45 });
+    const step = 6;
     for (let i = 0; i < divisions; i += step) {
       const tp = this.trackPoints[i];
       if (!tp) continue;
       const tangent = tp.tangent;
-      const geo = new THREE.PlaneGeometry(0.4, 4);
-      const dash = new THREE.Mesh(geo, mat);
-      dash.rotation.x = -Math.PI / 2;
-      dash.rotation.z = Math.atan2(tangent.x, tangent.z);
-      dash.position.set(tp.center.x, 0.015, tp.center.z);
-      this.scene.add(dash);
+      const angle = Math.atan2(tangent.x, tangent.z);
+      for (const offset of [-3.5, 3.5]) {
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+        const pos = tp.center.clone().addScaledVector(normal, offset);
+        const geo = new THREE.PlaneGeometry(1.0, step * 0.9);
+        const dash = new THREE.Mesh(geo, mat);
+        dash.rotation.x = -Math.PI / 2;
+        dash.rotation.z = angle;
+        dash.position.set(pos.x, tp.center.y + 0.03, pos.z);
+        this.scene.add(dash);
+      }
     }
   }
 
   private buildStartFinishLine() {
     const hw = this.mapConfig.trackWidth;
 
-    // ── START LINE (green banner at beginning) ──
+    // ── START LINE (green banner) ──
     const startTp = this.trackPoints[0];
+    const sy = startTp.center.y;
     const startAngle = Math.atan2(startTp.tangent.x, startTp.tangent.z);
     const startMat = new THREE.MeshBasicMaterial({ color: 0x00cc44 });
     const startLine = new THREE.Mesh(new THREE.PlaneGeometry(hw, 1.5), startMat);
     startLine.rotation.x = -Math.PI / 2;
     startLine.rotation.z = startAngle;
-    startLine.position.set(startTp.center.x, 0.02, startTp.center.z);
+    startLine.position.set(startTp.center.x, sy + 0.03, startTp.center.z);
     this.scene.add(startLine);
 
-    // START arch (green)
+    // Start arch
     const archMat = new THREE.MeshLambertMaterial({ color: 0x00aa33 });
     const perp0 = new THREE.Vector3(Math.cos(startAngle), 0, Math.sin(startAngle));
     const sL = startTp.center.clone().addScaledVector(perp0, hw / 2 + 0.5);
     const sR = startTp.center.clone().addScaledVector(perp0, -hw / 2 - 0.5);
     for (const pos of [sL, sR]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 0.5), archMat);
-      post.position.set(pos.x, 2.5, pos.z);
+      post.position.set(pos.x, sy + 2.5, pos.z);
       this.scene.add(post);
     }
     const startBeam = new THREE.Mesh(new THREE.BoxGeometry(hw + 1.5, 0.5, 0.5), archMat);
-    startBeam.position.set(startTp.center.x, 5, startTp.center.z);
+    startBeam.position.set(startTp.center.x, sy + 5, startTp.center.z);
     startBeam.rotation.y = startAngle;
     this.scene.add(startBeam);
 
-    // ── FINISH LINE (checkered + red gantry at end) ──
+    // ── FINISH LINE ──
     const finishTp = this.trackPoints[this.trackPoints.length - 1];
+    const fy = finishTp.center.y;
     const finishAngle = Math.atan2(finishTp.tangent.x, finishTp.tangent.z);
 
-    // White base
     const base = new THREE.Mesh(
       new THREE.PlaneGeometry(hw, 2.5),
       new THREE.MeshBasicMaterial({ color: 0xffffff })
     );
     base.rotation.x = -Math.PI / 2;
     base.rotation.z = finishAngle;
-    base.position.set(finishTp.center.x, 0.02, finishTp.center.z);
+    base.position.set(finishTp.center.x, fy + 0.03, finishTp.center.z);
     this.scene.add(base);
 
-    // Checkered squares
     const n = 8;
     const cw = hw / n;
     for (let i = 0; i < n; i++) {
@@ -356,64 +343,55 @@ export class GameEngine {
       const off = (i - n / 2 + 0.5) * cw;
       c.position.set(
         finishTp.center.x + Math.cos(perpA) * off,
-        0.03,
+        fy + 0.04,
         finishTp.center.z + Math.sin(perpA) * off
       );
       this.scene.add(c);
     }
 
-    // Finish gantry (red beam)
-    this.buildFinishGantry(finishTp, hw, finishAngle);
-  }
-
-  private buildFinishGantry(tp: TrackPoint, hw: number, angle: number) {
-    const mat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
-    const redMat = new THREE.MeshLambertMaterial({ color: 0xff2222 });
+    // Finish gantry (red)
+    const gMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
+    const gRedMat = new THREE.MeshLambertMaterial({ color: 0xff2222 });
     const height = 6;
-
-    const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-    const left = tp.center.clone().addScaledVector(perp, hw / 2 + 0.5);
-    const right = tp.center.clone().addScaledVector(perp, -hw / 2 - 0.5);
-
-    for (const pos of [left, right]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, height, 0.5), mat);
-      post.position.set(pos.x, height / 2, pos.z);
+    const perp = new THREE.Vector3(Math.cos(finishAngle), 0, Math.sin(finishAngle));
+    const fL = finishTp.center.clone().addScaledVector(perp, hw / 2 + 0.5);
+    const fR = finishTp.center.clone().addScaledVector(perp, -hw / 2 - 0.5);
+    for (const pos of [fL, fR]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, height, 0.5), gMat);
+      post.position.set(pos.x, fy + height / 2, pos.z);
       post.castShadow = true;
       this.scene.add(post);
     }
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(hw + 1.5, 0.5, 0.5), redMat);
-    beam.position.set(tp.center.x, height, tp.center.z);
-    beam.rotation.y = angle;
-    beam.castShadow = true;
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(hw + 1.5, 0.5, 0.5), gRedMat);
+    beam.position.set(finishTp.center.x, fy + height, finishTp.center.z);
+    beam.rotation.y = finishAngle;
     this.scene.add(beam);
   }
 
   private buildBarriers() {
-    // Wooden log barriers — rally forest style
+    // Wooden log barriers at road edges
     const step = 5;
-    const logMat = new THREE.MeshLambertMaterial({ color: 0x7a5228 }); // wood
-    const darkLogMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 }); // darker log
+    const logMat = new THREE.MeshLambertMaterial({ color: 0x7a5228 });
+    const darkLogMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 });
 
     for (let i = 0; i < this.trackPoints.length - 1; i += step) {
       const tp = this.trackPoints[i];
       const angle = Math.atan2(tp.tangent.x, tp.tangent.z);
       const alternate = Math.floor(i / step) % 3 !== 0;
+
       for (const side of [tp.left, tp.right]) {
-        // Horizontal log
-        const logGeo = new THREE.CylinderGeometry(0.22, 0.25, step * 0.9, 6);
+        const logGeo = new THREE.CylinderGeometry(0.22, 0.25, step * 0.95, 6);
         const log = new THREE.Mesh(logGeo, alternate ? logMat : darkLogMat);
         log.rotation.z = Math.PI / 2;
         log.rotation.y = angle;
-        log.position.set(side.x, 0.28, side.z);
+        log.position.set(side.x, side.y + 0.28, side.z);
         log.castShadow = true;
         this.scene.add(log);
 
-        // Stake holding the log
         if (Math.floor(i / step) % 2 === 0) {
           const stakeGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.9, 5);
           const stake = new THREE.Mesh(stakeGeo, darkLogMat);
-          stake.position.set(side.x, 0.45, side.z);
-          stake.castShadow = true;
+          stake.position.set(side.x, side.y + 0.45, side.z);
           this.scene.add(stake);
         }
       }
@@ -440,29 +418,27 @@ export class GameEngine {
     const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: glowing ? 0.9 : 0.7 });
     const height = 5;
     const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const cy = tp.center.y;
 
-    // Posts
     for (const sign of [-1, 1]) {
       const pos = tp.center.clone().addScaledVector(perp, sign * (hw / 2 + 0.3));
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, height, 6), mat);
-      post.position.set(pos.x, height / 2, pos.z);
+      post.position.set(pos.x, cy + height / 2, pos.z);
       group.add(post);
     }
-    // Beam
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, hw + 1.5, 6), mat);
     beam.rotation.z = Math.PI / 2;
-    beam.position.set(tp.center.x, height, tp.center.z);
+    beam.position.set(tp.center.x, cy + height, tp.center.z);
     beam.rotation.y = angle;
     group.add(beam);
 
-    // Ground strip
     const strip = new THREE.Mesh(
       new THREE.PlaneGeometry(hw, 1.5),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: glowing ? 0.8 : 0.4 })
     );
     strip.rotation.x = -Math.PI / 2;
     strip.rotation.z = angle;
-    strip.position.set(tp.center.x, 0.04, tp.center.z);
+    strip.position.set(tp.center.x, cy + 0.05, tp.center.z);
     group.add(strip);
 
     return group;
@@ -483,94 +459,202 @@ export class GameEngine {
   // ─────────────── Environment ───────────────
 
   private buildEnvironment() {
-    const treeMat = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
-    const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 }); // slightly lighter variant
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
-    const bushMat = new THREE.MeshLambertMaterial({ color: 0x2d5e0e });
     const rng = this.seededRng(42);
 
-    // ── Dense forest trees — 300 trees ──
-    for (let i = 0; i < 300; i++) {
-      const x = (rng() - 0.5) * 500;
-      const z = (rng() - 0.5) * 600;
+    // ── Terrain with rolling hills ──
+    this.buildTerrain(rng);
+
+    // ── Dense forest: 350 trees, packed on both sides ──
+    const treeMat1 = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
+    const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
+
+    for (let i = 0; i < 350; i++) {
+      const x = (rng() - 0.5) * 600;
+      const z = (rng() - 0.5) * 650;
       const pos = new THREE.Vector3(x, 0, z);
 
-      // Keep clear of the road
-      let tooClose = false;
+      let minDist = Infinity;
+      let roadY = 0;
       for (const tp of this.trackPoints) {
-        if (pos.distanceTo(tp.center) < this.mapConfig.trackWidth * 1.8) {
-          tooClose = true;
-          break;
-        }
+        const d = new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z));
+        if (d < minDist) { minDist = d; roadY = tp.center.y; }
       }
-      if (tooClose) continue;
+      if (minDist < this.mapConfig.trackWidth * 1.8) continue;
 
-      const h = 5 + rng() * 9;
-      const r = 1.8 + rng() * 2.5;
+      const treeY = this.getTerrainY(x, z);
+      const h = 6 + rng() * 10;
+      const r = 2.0 + rng() * 3.0;
       const sides = Math.floor(4 + rng() * 3);
-      const mat = rng() > 0.4 ? treeMat : treeMat2;
+      const mat = rng() > 0.45 ? treeMat1 : treeMat2;
 
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, h * 0.42, 5), trunkMat);
-      trunk.position.y = h * 0.21;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, h * 0.4, 5), trunkMat);
+      trunk.position.y = h * 0.2;
       trunk.castShadow = true;
 
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.75, sides), mat);
-      crown.position.y = h * 0.56;
-      crown.castShadow = true;
+      const crown1 = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.7, sides), mat);
+      crown1.position.y = h * 0.55;
+      crown1.castShadow = true;
 
-      // Second cone layer for rounder pine look
-      const crown2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.72, h * 0.5, sides), mat);
-      crown2.position.y = h * 0.68;
+      const crown2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.68, h * 0.5, sides), mat);
+      crown2.position.y = h * 0.7;
+
+      const crown3 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.38, h * 0.32, sides), mat);
+      crown3.position.y = h * 0.82;
 
       const tree = new THREE.Group();
-      tree.add(trunk);
-      tree.add(crown);
-      tree.add(crown2);
-      tree.position.set(x, 0, z);
+      tree.add(trunk, crown1, crown2, crown3);
+      tree.position.set(x, treeY, z);
       tree.rotation.y = rng() * Math.PI * 2;
       this.scene.add(tree);
     }
 
-    // ── Bushes/ferns near the track edges ──
-    for (let i = 0; i < 150; i++) {
-      const x = (rng() - 0.5) * 400;
-      const z = (rng() - 0.5) * 500;
-      const pos = new THREE.Vector3(x, 0, z);
-
+    // ── Undergrowth / bushes — close to track edges ──
+    const bushMat = new THREE.MeshLambertMaterial({ color: 0x2d5e0e });
+    const bushMat2 = new THREE.MeshLambertMaterial({ color: 0x3a6e14 });
+    for (let i = 0; i < 200; i++) {
+      const x = (rng() - 0.5) * 500;
+      const z = (rng() - 0.5) * 550;
       let minDist = Infinity;
       for (const tp of this.trackPoints) {
-        const d = pos.distanceTo(tp.center);
+        const d = new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z));
         if (d < minDist) minDist = d;
       }
-      // Only place bushes close-ish to the track but not on it
-      if (minDist < this.mapConfig.trackWidth * 0.95 || minDist > this.mapConfig.trackWidth * 4) continue;
+      // Bushes tight to road edges
+      if (minDist < this.mapConfig.trackWidth || minDist > this.mapConfig.trackWidth * 5) continue;
 
-      const r = 0.6 + rng() * 1.2;
-      const bush = new THREE.Mesh(new THREE.SphereGeometry(r, 5, 4), bushMat);
-      bush.position.set(x, r * 0.5, z);
-      bush.scale.y = 0.55;
+      const tY = this.getTerrainY(x, z);
+      const r = 0.7 + rng() * 1.5;
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(r, 5, 4), rng() > 0.5 ? bushMat : bushMat2);
+      bush.position.set(x, tY + r * 0.45, z);
+      bush.scale.y = 0.6;
       this.scene.add(bush);
     }
 
+    // ── Lakes ──
+    this.buildLakes(rng);
+
     // ── Rocks ──
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x707565 });
-    for (let i = 0; i < 60; i++) {
-      const x = (rng() - 0.5) * 400;
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x6f6a60 });
+    for (let i = 0; i < 70; i++) {
+      const x = (rng() - 0.5) * 450;
       const z = (rng() - 0.5) * 500;
       let tooClose = false;
       for (const tp of this.trackPoints) {
-        if (new THREE.Vector3(x, 0, z).distanceTo(tp.center) < this.mapConfig.trackWidth * 1.6) {
-          tooClose = true;
-          break;
+        if (new THREE.Vector2(x, z).distanceTo(new THREE.Vector2(tp.center.x, tp.center.z)) < this.mapConfig.trackWidth * 1.5) {
+          tooClose = true; break;
         }
       }
       if (tooClose) continue;
-      const s = 0.4 + rng() * 1.8;
+      const tY = this.getTerrainY(x, z);
+      const s = 0.4 + rng() * 2.2;
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
-      rock.position.set(x, s * 0.35, z);
+      rock.position.set(x, tY + s * 0.3, z);
       rock.rotation.set(rng(), rng(), rng());
       rock.castShadow = true;
       this.scene.add(rock);
+    }
+  }
+
+  // Simple sine-wave terrain height — smooth rolling hills
+  private getTerrainY(x: number, z: number): number {
+    return Math.sin(x * 0.028) * Math.cos(z * 0.022) * 4.5
+         + Math.sin(x * 0.07 + z * 0.05) * 1.8
+         + Math.sin(z * 0.018) * 3.5;
+  }
+
+  private buildTerrain(rng: () => number) {
+    const size = 800;
+    const segs = 70;
+    const groundGeo = new THREE.PlaneGeometry(size, size, segs, segs);
+    groundGeo.rotateX(-Math.PI / 2);
+
+    const posAttr = groundGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const z = posAttr.getZ(i);
+
+      // Distance to nearest track point
+      let minDist = Infinity;
+      let nearestRoadY = 0;
+      for (const tp of this.trackPoints) {
+        const d = Math.sqrt((x - tp.center.x) ** 2 + (z - tp.center.z) ** 2);
+        if (d < minDist) { minDist = d; nearestRoadY = tp.center.y; }
+      }
+
+      const hw = this.mapConfig.trackWidth;
+      if (minDist < hw * 1.1) {
+        // Stay flat at road level near the track
+        posAttr.setY(i, nearestRoadY);
+      } else {
+        // Rolling hills away from road
+        const terrainH = this.getTerrainY(x, z);
+        // Blend from road level to terrain over 1.1–3× track width
+        const blend = Math.min((minDist - hw * 1.1) / (hw * 2), 1.0);
+        posAttr.setY(i, nearestRoadY * (1 - blend) + terrainH * blend);
+      }
+    }
+    groundGeo.computeVertexNormals();
+
+    const groundMat = new THREE.MeshLambertMaterial({ color: this.mapConfig.groundColor });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+  }
+
+  private buildLakes(rng: () => number) {
+    // 3 lakes at fixed positions well away from track
+    const lakeDefs = [
+      { x: -65, z: 80,  rx: 28, rz: 18, y: 0.5 },
+      { x: 75,  z: 215, rx: 22, rz: 32, y: 5 },
+      { x: -55, z: 320, rx: 20, rz: 14, y: 2 },
+    ];
+
+    const waterMat = new THREE.MeshLambertMaterial({
+      color: 0x2a6a9a, transparent: true, opacity: 0.88,
+    });
+    const shoreMat = new THREE.MeshLambertMaterial({ color: 0x4a7a2a });
+
+    for (const lk of lakeDefs) {
+      // Check not too close to track
+      let tooClose = false;
+      for (const tp of this.trackPoints) {
+        const dx = tp.center.x - lk.x;
+        const dz = tp.center.z - lk.z;
+        if (Math.sqrt(dx * dx + dz * dz) < this.mapConfig.trackWidth * 2 + Math.max(lk.rx, lk.rz)) {
+          tooClose = true; break;
+        }
+      }
+      if (tooClose) continue;
+
+      // Shore ring (slightly larger)
+      const shoreGeo = new THREE.CircleGeometry(1, 20);
+      const shore = new THREE.Mesh(shoreGeo, shoreMat);
+      shore.rotation.x = -Math.PI / 2;
+      shore.scale.set(lk.rx + 4, 1, lk.rz + 4);
+      shore.position.set(lk.x, lk.y - 0.1, lk.z);
+      this.scene.add(shore);
+
+      // Water surface
+      const lakeGeo = new THREE.CircleGeometry(1, 20);
+      const lake = new THREE.Mesh(lakeGeo, waterMat);
+      lake.rotation.x = -Math.PI / 2;
+      lake.scale.set(lk.rx, 1, lk.rz);
+      lake.position.set(lk.x, lk.y + 0.08, lk.z);
+      this.scene.add(lake);
+
+      // Reeds around lake edge
+      const reedMat = new THREE.MeshLambertMaterial({ color: 0x7a9a30 });
+      for (let r = 0; r < 16; r++) {
+        const angle = (r / 16) * Math.PI * 2 + (rng() - 0.5) * 0.4;
+        const ex = lk.x + Math.cos(angle) * (lk.rx + 2 + rng() * 3);
+        const ez = lk.z + Math.sin(angle) * (lk.rz + 2 + rng() * 3);
+        const reedH = 1.5 + rng() * 1.2;
+        const reed = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, reedH, 4), reedMat);
+        reed.position.set(ex, lk.y + reedH / 2, ez);
+        reed.rotation.z = (rng() - 0.5) * 0.3;
+        this.scene.add(reed);
+      }
     }
   }
 
@@ -582,100 +666,175 @@ export class GameEngine {
     };
   }
 
-  // ─────────────── Car ───────────────
+  // ─────────────── WRC Rally Car ───────────────
 
   private buildCar() {
-    const cfg = this.carConfig;
     this.carGroup = new THREE.Group();
 
-    // Main body
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(2.1, 0.75, 3.8),
-      new THREE.MeshLambertMaterial({ color: cfg.bodyColor })
-    );
-    body.position.y = 0.5;
+    const white = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
+    const blue = new THREE.MeshLambertMaterial({ color: 0x003399 });
+    const red = new THREE.MeshLambertMaterial({ color: 0xcc1111 });
+    const black = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    const darkGrey = new THREE.MeshLambertMaterial({ color: 0x222222 });
+    const winMat = new THREE.MeshLambertMaterial({ color: 0x88ccff, transparent: true, opacity: 0.75 });
+    const lightMat = new THREE.MeshBasicMaterial({ color: 0xfffaaa });
+    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+
+    // ── Main body — wide & low ──
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.58, 4.1), white);
+    body.position.y = 0.42;
     body.castShadow = true;
     this.carGroup.add(body);
     this.carBodyMesh = body;
 
-    // Front spoiler
-    const spoilerFront = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 0.15, 0.5),
-      new THREE.MeshLambertMaterial({ color: cfg.bodyColor })
-    );
-    spoilerFront.position.set(0, 0.22, 1.95);
-    this.carGroup.add(spoilerFront);
+    // Blue hood stripe (wide stripe down center)
+    const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.01, 1.7), blue);
+    hoodStripe.position.set(0, 0.72, 0.95);
+    this.carGroup.add(hoodStripe);
 
-    // Rear wing
-    const wingPost1 = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.6, 0.1),
-      new THREE.MeshLambertMaterial({ color: 0x222222 })
-    );
-    wingPost1.position.set(0.5, 0.95, -1.7);
-    const wingPost2 = wingPost1.clone();
-    wingPost2.position.set(-0.5, 0.95, -1.7);
-    this.carGroup.add(wingPost1, wingPost2);
-    const wing = new THREE.Mesh(
-      new THREE.BoxGeometry(2.0, 0.1, 0.55),
-      new THREE.MeshLambertMaterial({ color: cfg.bodyColor })
-    );
-    wing.position.set(0, 1.28, -1.7);
-    this.carGroup.add(wing);
+    // Red front bumper
+    const frontBump = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.32, 0.22), red);
+    frontBump.position.set(0, 0.28, 2.18);
+    this.carGroup.add(frontBump);
 
-    // Cabin
-    const cabin = new THREE.Mesh(
-      new THREE.BoxGeometry(1.65, 0.55, 1.7),
-      new THREE.MeshLambertMaterial({ color: cfg.bodyColor })
-    );
-    cabin.position.set(0, 1.08, -0.15);
+    // Red rear bumper
+    const rearBump = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.32, 0.22), red);
+    rearBump.position.set(0, 0.28, -2.18);
+    this.carGroup.add(rearBump);
+
+    // Front splitter
+    const splitter = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.08, 0.35), black);
+    splitter.position.set(0, 0.08, 2.25);
+    this.carGroup.add(splitter);
+
+    // Front air duct / intake
+    const duct = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.15), black);
+    duct.position.set(0, 0.38, 2.26);
+    this.carGroup.add(duct);
+
+    // Fender flares (wider lower body)
+    for (const sx of [-1, 1]) {
+      const flare = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.35, 1.5), white);
+      flare.position.set(sx * 1.29, 0.32, 0.3);
+      flare.castShadow = true;
+      this.carGroup.add(flare);
+    }
+
+    // ── Cabin ──
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.52, 1.8), white);
+    cabin.position.set(0, 1.0, -0.1);
     cabin.castShadow = true;
     this.carGroup.add(cabin);
 
-    // Windows
-    const winMat = new THREE.MeshLambertMaterial({ color: cfg.windowColor, transparent: true, opacity: 0.75 });
-    const fwin = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.45), winMat);
-    fwin.position.set(0, 1.12, 0.72);
-    fwin.rotation.x = -0.35;
-    this.carGroup.add(fwin);
-    const rwin = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.45), winMat);
-    rwin.position.set(0, 1.12, -1.02);
-    rwin.rotation.x = 0.35;
-    this.carGroup.add(rwin);
+    // Blue roof stripe
+    const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.01, 1.78), blue);
+    roofStripe.position.set(0, 1.27, -0.1);
+    this.carGroup.add(roofStripe);
 
-    // Wheels
-    const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.32, 8);
-    const wheelMat = new THREE.MeshLambertMaterial({ color: cfg.wheelColor });
-    const hubMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
-    const wheelPos = [
-      [0.95, 0.36, 1.3], [-0.95, 0.36, 1.3],
-      [0.95, 0.36, -1.3], [-0.95, 0.36, -1.3],
+    // Windshield
+    const fWin = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.52), winMat);
+    fWin.position.set(0, 1.03, 0.82);
+    fWin.rotation.x = -0.42;
+    this.carGroup.add(fWin);
+
+    // Rear window
+    const rWin = new THREE.Mesh(new THREE.PlaneGeometry(1.55, 0.52), winMat);
+    rWin.position.set(0, 1.03, -1.02);
+    rWin.rotation.x = 0.42;
+    this.carGroup.add(rWin);
+
+    // Side windows
+    for (const sx of [-1, 1]) {
+      const sWin = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.42), winMat);
+      sWin.position.set(sx * 0.86, 1.03, -0.1);
+      sWin.rotation.y = sx * Math.PI / 2;
+      this.carGroup.add(sWin);
+    }
+
+    // ── Rear wing — big WRC style ──
+    for (const sx of [-0.72, 0.72]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.55, 0.08), darkGrey);
+      post.position.set(sx, 1.05, -1.85);
+      this.carGroup.add(post);
+    }
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.1, 0.62), blue);
+    wing.position.set(0, 1.35, -1.85);
+    wing.castShadow = true;
+    this.carGroup.add(wing);
+    // Wing end plates
+    for (const sx of [-1, 1]) {
+      const ep = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.64), blue);
+      ep.position.set(sx * 1.0, 1.3, -1.85);
+      this.carGroup.add(ep);
+    }
+
+    // Roof vent / air intake
+    const roofVent = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.18, 0.8), blue);
+    roofVent.position.set(0, 1.37, 0.1);
+    this.carGroup.add(roofVent);
+
+    // ── Lights ──
+    const lgeo = new THREE.BoxGeometry(0.5, 0.18, 0.08);
+    for (const sx of [-0.7, 0.7]) {
+      // Headlights (pair per side)
+      const hl = new THREE.Mesh(lgeo, lightMat);
+      hl.position.set(sx, 0.45, 2.18);
+      this.carGroup.add(hl);
+      // Fog light (round)
+      const fog = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8), lightMat);
+      fog.rotation.x = Math.PI / 2;
+      fog.position.set(sx * 0.6, 0.22, 2.24);
+      this.carGroup.add(fog);
+      // Tail lights
+      const tl = new THREE.Mesh(lgeo, tailMat);
+      tl.position.set(sx, 0.45, -2.18);
+      this.carGroup.add(tl);
+    }
+
+    // Race number plate on roof/doors
+    const plateMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const plateNum = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.28, 0.02), plateMat);
+    plateNum.position.set(0, 1.28, 1.76);
+    this.carGroup.add(plateNum);
+
+    // ── Wheels — low-profile rally tires ──
+    const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.36, 10);
+    const hubMat = new THREE.MeshLambertMaterial({ color: 0x666666 });
+    const spokeGeo = new THREE.BoxGeometry(0.06, 0.3, 0.34);
+
+    const wheelPositions = [
+      [1.15, 0.38,  1.38],
+      [-1.15, 0.38,  1.38],
+      [1.15, 0.38, -1.38],
+      [-1.15, 0.38, -1.38],
     ];
     this.wheels = [];
-    for (const [wx, wy, wz] of wheelPos) {
+
+    for (const [wx, wy, wz] of wheelPositions) {
       const wGroup = new THREE.Group();
-      const tire = new THREE.Mesh(wheelGeo, wheelMat);
+
+      const tire = new THREE.Mesh(wheelGeo, black);
       tire.rotation.z = Math.PI / 2;
       tire.castShadow = true;
       wGroup.add(tire);
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.34, 6), hubMat);
+
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.38, 5), hubMat);
       hub.rotation.z = Math.PI / 2;
       wGroup.add(hub);
+
+      // Spokes
+      for (let s = 0; s < 5; s++) {
+        const spoke = new THREE.Mesh(spokeGeo, hubMat);
+        spoke.rotation.x = (s / 5) * Math.PI * 2;
+        spoke.position.x = 0;
+        spoke.position.y = Math.cos((s / 5) * Math.PI * 2) * 0.12;
+        spoke.position.z = Math.sin((s / 5) * Math.PI * 2) * 0.12;
+        hub.add(spoke);
+      }
+
       wGroup.position.set(wx, wy, wz);
       this.carGroup.add(wGroup);
       this.wheels.push(tire);
-    }
-
-    // Lights
-    const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
-    const tlMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
-    const lgeo = new THREE.BoxGeometry(0.55, 0.2, 0.08);
-    for (const x of [-0.65, 0.65]) {
-      const hl = new THREE.Mesh(lgeo, hlMat);
-      hl.position.set(x, 0.52, 1.93);
-      this.carGroup.add(hl);
-      const tl = new THREE.Mesh(lgeo, tlMat);
-      tl.position.set(x, 0.52, -1.93);
-      this.carGroup.add(tl);
     }
 
     this.scene.add(this.carGroup);
@@ -684,23 +843,23 @@ export class GameEngine {
   // ─────────────── Lights ───────────────
 
   private setupLights() {
-    // Forest ambient — slightly green-tinted, softer
-    this.scene.add(new THREE.AmbientLight(0xaac890, 0.7));
+    // Forest ambient — green-tinted
+    this.scene.add(new THREE.AmbientLight(0xaac890, 0.65));
 
-    // Sun filtering through canopy — warm but diffused
-    const sun = new THREE.DirectionalLight(0xe8f0c0, 1.0);
-    sun.position.set(30, 80, 60);
+    // Sun — diffused through canopy
+    const sun = new THREE.DirectionalLight(0xe0eecc, 1.0);
+    sun.position.set(35, 90, 60);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 500;
-    sun.shadow.camera.left = sun.shadow.camera.bottom = -200;
-    sun.shadow.camera.right = sun.shadow.camera.top = 200;
+    sun.shadow.camera.far = 600;
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -220;
+    sun.shadow.camera.right = sun.shadow.camera.top = 220;
     this.scene.add(sun);
 
-    // Cool fill from opposite side (sky reflection)
-    const fill = new THREE.DirectionalLight(0x7a9e78, 0.35);
-    fill.position.set(-40, 20, -40);
+    // Cool fill from sky
+    const fill = new THREE.DirectionalLight(0x7a9e78, 0.4);
+    fill.position.set(-40, 25, -40);
     this.scene.add(fill);
   }
 
@@ -709,7 +868,6 @@ export class GameEngine {
   private setupAudio() {
     try {
       this.soundCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      // Engine oscillator removed — too loud/unpleasant
     } catch {}
   }
 
@@ -718,8 +876,7 @@ export class GameEngine {
   }
 
   private playBeep(step: number) {
-    const freq = step === 3 ? 440 : step === 2 ? 440 : step === 1 ? 440 : 880;
-    this.playSound(freq, 0.15, 'square', 0.08);
+    this.playSound(440, 0.15, 'square', 0.08);
   }
 
   private playSound(freq: number, duration: number, type: OscillatorType = 'sine', volume = 0.1) {
@@ -785,17 +942,14 @@ export class GameEngine {
     if (this.raceState === 'countdown') {
       this.tickCountdown(dt);
       this.updateCamera(dt);
-      this.renderer.render(this.scene, this.camera);
       return;
     }
     if (this.raceState === 'finished') {
       this.updateCamera(dt);
       return;
     }
-    // Racing
     this.updatePhysics(dt);
     this.updateCamera(dt);
-    this.updateAudio();
     this.updateParticles(dt, now);
     this.updateTimer(now);
     this.checkProgress();
@@ -806,21 +960,18 @@ export class GameEngine {
   private updatePhysics(dt: number) {
     const { carConfig, input, physics } = this;
 
-    // ── Parameters ──
     const speedBoost = 0.9 + (carConfig.speed - 1) * 0.18;
     const handlingBoost = 0.7 + (carConfig.handling - 1) * 0.16;
-    const maxSpeed = 28 * speedBoost;            // top speed
-    const accel = 22 * speedBoost;               // forward accel
+    const maxSpeed = 28 * speedBoost;
+    const accel = 22 * speedBoost;
     const brakeForce = 32;
-    const rollFriction = 4;                      // natural deceleration
-    const steerMax = 2.2 * handlingBoost;        // max yaw rate (rad/s)
-    // Drift grip: how quickly lateral velocity decays (lower = more drift)
-    const lateralGrip = 2.5 + (carConfig.handling - 1) * 0.5; // units/s²
-    const driftAccum = 6 + (5 - carConfig.handling) * 1.2;    // drift accumulation rate
+    const rollFriction = 4;
+    const steerMax = 2.2 * handlingBoost;
+    const lateralGrip = 2.5 + (carConfig.handling - 1) * 0.5;
+    const driftAccum = 6 + (5 - carConfig.handling) * 1.2;
 
     const speedRatio = Math.abs(physics.speed) / maxSpeed;
 
-    // ── Throttle & Brake ──
     let throttle = 0;
     if (input.forward) throttle = 1;
     if (input.backward) throttle = -1;
@@ -839,8 +990,6 @@ export class GameEngine {
       if (Math.abs(physics.speed) < 0.1) physics.speed = 0;
     }
 
-    // ── Steering ──
-    // Steer rate peaks at mid-speed, reduces slightly at top speed (understeer)
     const steerCurve = speedRatio > 0.05
       ? steerMax * Math.min(speedRatio * 3, 1) * (1 - speedRatio * 0.25)
       : 0;
@@ -851,23 +1000,18 @@ export class GameEngine {
     const steerDir = physics.speed >= 0 ? 1 : -1;
     physics.heading += steerInput * steerCurve * steerDir * dt;
 
-    // ── Drift Model ──
     const isBraking = input.backward && physics.speed > 3;
     const isHandbrake = input.handbrake && speedRatio > 0.15;
 
-    // Handbrake: rear locks up — massive drift kick, near-zero grip
-    // Brake drift: moderate kick when braking in corners
     let driftMultiplier = 1.0;
     let effectiveLateralGrip = lateralGrip;
 
     if (isHandbrake) {
       driftMultiplier = 6.0;
-      effectiveLateralGrip = lateralGrip * 0.05;   // rear slides almost freely
-      // Handbrake bleeds forward speed into lateral (rear kicks out)
+      effectiveLateralGrip = lateralGrip * 0.05;
       if (steerInput !== 0) {
         physics.lateralVel += -steerInput * 18 * speedRatio * dt;
       }
-      // Slight speed penalty (tyres scrubbing)
       physics.speed *= 1 - 0.6 * dt;
     } else if (isBraking) {
       driftMultiplier = 3.5;
@@ -881,24 +1025,18 @@ export class GameEngine {
       physics.lateralVel += -steerInput * driftAccum * driftMultiplier * speedRatio * dt;
     }
 
-    // Grip recovery: pull lateralVel toward 0
     physics.lateralVel = THREE.MathUtils.lerp(physics.lateralVel, 0, effectiveLateralGrip * dt);
-
-    // Clamp lateral vel
     const maxLateral = maxSpeed * 0.75;
     physics.lateralVel = THREE.MathUtils.clamp(physics.lateralVel, -maxLateral, maxLateral);
 
-    // ── Velocity vector = forward + lateral ──
     const fwd = new THREE.Vector3(Math.sin(physics.heading), 0, Math.cos(physics.heading));
     const right = new THREE.Vector3(Math.cos(physics.heading), 0, -Math.sin(physics.heading));
     const vel = fwd.clone().multiplyScalar(physics.speed)
       .addScaledVector(right, physics.lateralVel);
 
     physics.position.addScaledVector(vel, dt);
-    physics.position.y = 0.5;
 
-    // ── Track boundary collision ──
-    // Find the closest point on the spline and push back if out of bounds
+    // ── Follow road elevation ──
     if (this.spline) {
       const pos2D = new THREE.Vector2(physics.position.x, physics.position.z);
       const closestT = this.findClosestT(pos2D);
@@ -907,21 +1045,17 @@ export class GameEngine {
       const distFromCenter = pos2D.distanceTo(closestPt2D);
       const halfWidth = this.mapConfig.trackWidth * 0.5;
 
+      // Road Y following
+      physics.position.y = THREE.MathUtils.lerp(physics.position.y, closestPt.y + 0.52, 0.25);
+
+      // Boundary push
       if (distFromCenter > halfWidth) {
-        // Push car back onto the track edge
         const pushDir = pos2D.clone().sub(closestPt2D).normalize();
         const overlap = distFromCenter - halfWidth;
         physics.position.x -= pushDir.x * (overlap + 0.1);
         physics.position.z -= pushDir.y * (overlap + 0.1);
-
-        // Kill velocity component going into the wall
-        const wallNormal = new THREE.Vector3(-pushDir.x, 0, -pushDir.y);
-        const velDotNormal = vel.dot(wallNormal);
-        if (velDotNormal < 0) {
-          // Cancel out-of-bounds velocity, keep ~20% as bounce
-          physics.speed *= 0.45;
-          physics.lateralVel *= 0.4;
-        }
+        physics.speed *= 0.45;
+        physics.lateralVel *= 0.4;
       }
     }
 
@@ -933,15 +1067,15 @@ export class GameEngine {
     const wheelRot = physics.speed * dt * 1.4;
     this.wheels.forEach(w => { w.rotation.x += wheelRot; });
 
-    // Body roll & pitch
+    // Body roll
     this.carBodyMesh.rotation.z = THREE.MathUtils.lerp(
       this.carBodyMesh.rotation.z,
-      steerInput * speedRatio * -0.08,
+      steerInput * speedRatio * -0.07,
       0.12
     );
     this.carBodyMesh.rotation.x = THREE.MathUtils.lerp(
       this.carBodyMesh.rotation.x,
-      (input.forward ? -1 : input.backward ? 1 : 0) * speedRatio * 0.055,
+      (input.forward ? -1 : input.backward ? 1 : 0) * speedRatio * 0.05,
       0.1
     );
   }
@@ -953,12 +1087,10 @@ export class GameEngine {
     const pos2D = new THREE.Vector2(this.physics.position.x, this.physics.position.z);
     const currentT = this.findClosestT(pos2D);
 
-    // ── Checkpoints ──
     const numCp = this.mapConfig.checkpoints.length;
     if (this.lapCheckpointIndex < numCp) {
       const nextCp = this.checkpointStates[this.lapCheckpointIndex];
       if (nextCp && !nextCp.passed) {
-        // Check proximity to checkpoint gate
         const cpPos = this.spline.getPoint(nextCp.t);
         const dist = pos2D.distanceTo(new THREE.Vector2(cpPos.x, cpPos.z));
         if (dist < this.mapConfig.trackWidth * 0.9) {
@@ -967,8 +1099,6 @@ export class GameEngine {
       }
     }
 
-    // ── Stage finish detection ──
-    // Linear stage: finish when the car reaches the end (t > 0.92)
     const reachedEnd = currentT > 0.92 && this.raceState === 'racing';
     if (reachedEnd) {
       this.finishRace();
@@ -998,7 +1128,6 @@ export class GameEngine {
     }
 
     this.callbacks.onCheckpoint?.({ index, elapsedMs: splitMs, deltaMs, isBest });
-
     const beepFreq = 660 + index * 110;
     this.playSound(beepFreq, 0.08, 'sine', 0.07);
   }
@@ -1006,7 +1135,7 @@ export class GameEngine {
   private findClosestT(pos2D: THREE.Vector2): number {
     let minDist = Infinity;
     let bestT = 0;
-    const samples = 240;
+    const samples = 260;
     for (let i = 0; i <= samples; i++) {
       const t = i / samples;
       const pt = this.spline.getPoint(t);
@@ -1026,7 +1155,6 @@ export class GameEngine {
       this.bestTotalTime = this.elapsedMs;
     }
 
-    // Victory fanfare
     const notes = [440, 550, 660, 880];
     notes.forEach((f, i) => setTimeout(() => this.playSound(f, i < 3 ? 0.15 : 0.5, 'sine', 0.09 + i * 0.01), i * 120));
 
@@ -1042,46 +1170,42 @@ export class GameEngine {
     this.callbacks.onTimerUpdate?.(this.elapsedMs);
   }
 
-  // ─────────────── Camera ───────────────
+  // ─────────────── Camera — Third Person Behind ───────────────
 
   private updateCamera(dt: number) {
     const target = this.physics.position.clone();
     const speedAbs = Math.abs(this.physics.speed);
-    const height = 30 + speedAbs * 0.3;
-    const behind = 18 + speedAbs * 0.25;
-    const lerpSpeed = this.raceState === 'countdown' ? 0.04 : 0.055 + speedAbs * 0.001;
+
+    // Low, behind — classic rally third-person camera
+    const height = 2.8 + speedAbs * 0.035;
+    const behind = 9.5 + speedAbs * 0.09;
+    const lookAheadY = 1.2; // look slightly above car roof
 
     const offset = new THREE.Vector3(
       -Math.sin(this.physics.heading) * behind,
       height,
       -Math.cos(this.physics.heading) * behind
     );
-    this.camera.position.lerp(target.clone().add(offset), lerpSpeed);
-    this.camera.lookAt(target.x, 0, target.z);
+
+    const camLerpSpeed = 0.1 + speedAbs * 0.002;
+    this.camera.position.lerp(target.clone().add(offset), camLerpSpeed);
+    this.camera.lookAt(target.x, target.y + lookAheadY, target.z);
   }
 
-  // ─────────────── Audio update ───────────────
-
-  private updateAudio() {
-    // Engine sound removed
-  }
-
-  // ─────────────── Particles ───────────────
+  // ─────────────── Particles (dirt spray) ───────────────
 
   private updateParticles(dt: number, now: number) {
     const drift = Math.abs(this.physics.lateralVel);
     const speed = Math.abs(this.physics.speed);
-    if (drift > 3 && speed > 5) {
-      this.driftParticleTimer += dt;
-      if (this.driftParticleTimer > 0.04) {
-        this.driftParticleTimer = 0;
-        this.emitSmoke(0xbbbbbb, 1.8, 400);
-      }
-    } else if (speed > 20) {
-      this.driftParticleTimer += dt;
-      if (this.driftParticleTimer > 0.1) {
-        this.driftParticleTimer = 0;
-        this.emitSmoke(0xeeeecc, 1.2, 300);
+
+    if (speed > 4) {
+      this.dirtParticleTimer += dt;
+      const interval = drift > 3 ? 0.03 : 0.08;
+      if (this.dirtParticleTimer > interval) {
+        this.dirtParticleTimer = 0;
+        // Dirt/mud spray — brown particles
+        const color = drift > 3 ? 0x8a5a2a : 0xa07840;
+        this.emitDirt(color, 1.5, drift > 3 ? 350 : 250);
       }
     }
 
@@ -1090,45 +1214,42 @@ export class GameEngine {
       const age = now - ud.spawnTime;
       if (age > ud.lifetime) { this.scene.remove(p); return false; }
       const mat = p.material as THREE.PointsMaterial;
-      mat.opacity = (1 - age / ud.lifetime) * 0.7;
+      mat.opacity = (1 - age / ud.lifetime) * 0.8;
       p.position.y += ud.vy * dt;
-      p.position.x += (Math.random() - 0.5) * 0.1;
-      p.position.z += (Math.random() - 0.5) * 0.1;
+      p.position.x += (Math.random() - 0.5) * 0.15;
+      p.position.z += (Math.random() - 0.5) * 0.15;
       return true;
     });
   }
 
-  private emitSmoke(color: number, size: number, lifetime: number) {
-    const n = 6;
+  private emitDirt(color: number, size: number, lifetime: number) {
+    const n = 8;
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      pos[i * 3] = this.physics.position.x + (Math.random() - 0.5) * 2.5;
-      pos[i * 3 + 1] = 0.15;
-      pos[i * 3 + 2] = this.physics.position.z + (Math.random() - 0.5) * 2.5;
+      pos[i * 3] = this.physics.position.x + (Math.random() - 0.5) * 3;
+      pos[i * 3 + 1] = this.physics.position.y - 0.3;
+      pos[i * 3 + 2] = this.physics.position.z + (Math.random() - 0.5) * 3;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({ color, size, transparent: true, opacity: 0.7, depthWrite: false });
+    const mat = new THREE.PointsMaterial({ color, size, transparent: true, opacity: 0.8, depthWrite: false });
     const pts = new THREE.Points(geo, mat);
-    pts.userData = { spawnTime: performance.now(), lifetime, vy: 1.5 };
+    pts.userData = { spawnTime: performance.now(), lifetime, vy: 2.0 };
     this.scene.add(pts);
     this.particles.push(pts);
   }
 
   // ─────────────── Public API ───────────────
 
-  /** Instant restart — resets everything and starts a new countdown */
   public restart() {
     this.raceState = 'countdown';
     this.timerActive = false;
     this.elapsedMs = 0;
     this.currentLap = 0;
     this.lapCheckpointIndex = 0;
-    // Clear input so car doesn't shoot off
     this.input.forward = false;
     this.input.backward = false;
     this.placeCarAtStart();
-    // Clear particles
     this.particles.forEach(p => this.scene.remove(p));
     this.particles = [];
     this.startCountdown();

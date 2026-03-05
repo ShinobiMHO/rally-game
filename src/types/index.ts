@@ -3,6 +3,7 @@ export interface CarConfig {
   name: string;
   color: number;
   bodyColor: number;
+  accentColor: number;
   windowColor: number;
   wheelColor: number;
   description: string;
@@ -19,7 +20,7 @@ export interface MapConfig {
   roadColor: number;
   barrierColor: number;
   treeColor: number;
-  waypoints: [number, number][];
+  waypoints: [number, number, number][]; // [x, z_world, y_elevation]
   trackWidth: number;
   laps: number;
   checkpoints: number[]; // t values [0-1] along spline

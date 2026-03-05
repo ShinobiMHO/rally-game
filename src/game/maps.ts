@@ -1,35 +1,34 @@
 import type { MapConfig } from '@/types';
 
 // Single linear stage: Forêt de Bretagne
-// Point A → Point B, dirt road through the forest.
+// [x, z_world, y_elevation] — dramatic uphill/downhill sections
 export const MAP_CONFIGS: MapConfig[] = [
   {
     id: 0,
     name: 'Forêt de Bretagne',
-    description: 'Spéciale terre — piste large à travers la forêt dense, du départ jusqu\'à l\'arrivée',
+    description: 'Spéciale terre — piste large à travers la forêt dense, départ → arrivée',
     difficulty: 'Medium',
-    groundColor: 0x2e4a12,   // dark forest moss
-    roadColor: 0x7a5230,     // dirt brown
-    barrierColor: 0x5c3d1e,  // dark wood logs
-    treeColor: 0x1a4f08,     // deep pine green
+    groundColor: 0x2e4a12,
+    roadColor: 0x7a5230,
+    barrierColor: 0x5c3d1e,
+    treeColor: 0x1a4f08,
     trackWidth: 18,
     laps: 1,
     checkpoints: [0.25, 0.5, 0.75],
-    // Linear dirt road, A→B, going generally northward with sweeping rally corners
     waypoints: [
-      [0,    0],    // START
-      [18,  30],    // sweeping right
-      [35,  65],    // into the forest
-      [20, 100],    // medium left
-      [-5,  125],   // tightish left
-      [-28, 160],   // long straight-ish section
-      [-10, 200],   // big sweeping right
-      [25,  225],   // right curve
-      [42,  265],   // forest straight
-      [18,  298],   // left hairpin
-      [-8,  325],   // exit left
-      [10,  355],   // sweeping right again
-      [5,   385],   // FINISH straight
+      [0,    0,    0],    // START — clairière
+      [18,   30,   2],    // montée douce en forêt
+      [35,   65,   6],    // virage droit, montée
+      [20,  100,  10],    // crête, virage gauche
+      [-5,  125,   8],    // plateau forestier
+      [-28, 160,   4],    // descente + virage gauche long
+      [-10, 200,   7],    // remontée en épingle
+      [25,  225,  12],    // CRETE — point culminant
+      [42,  265,   7],    // descente rapide droite
+      [18,  298,   2],    // fond de vallée, épingle gauche
+      [-8,  325,   4],    // remontée virage droit
+      [10,  355,   2],    // dernière descente
+      [5,   385,   0],    // ARRIVÉE — fin de spéciale
     ],
   },
 ];

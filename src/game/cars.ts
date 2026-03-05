@@ -1,59 +1,17 @@
 import type { CarConfig } from '@/types';
 
+// Single rally car — WRC style
 export const CAR_CONFIGS: CarConfig[] = [
   {
     id: 0,
-    name: 'Scarlet Rocket',
-    color: 0xff2222,
-    bodyColor: 0xff2222,
+    name: 'WRC Beast',
+    color: 0xf0f0f0,
+    bodyColor: 0xf0f0f0,    // white base
+    accentColor: 0x003399,  // blue stripes
     windowColor: 0x88ccff,
-    wheelColor: 0x222222,
-    description: 'Balanced speed & handling',
-    speed: 3,
-    handling: 3,
-  },
-  {
-    id: 1,
-    name: 'Blue Thunder',
-    color: 0x2255ff,
-    bodyColor: 0x2255ff,
-    windowColor: 0xaaddff,
-    wheelColor: 0x111133,
-    description: 'Top speed beast',
-    speed: 5,
-    handling: 2,
-  },
-  {
-    id: 2,
-    name: 'Venom Verde',
-    color: 0x22cc44,
-    bodyColor: 0x22cc44,
-    windowColor: 0x99ffaa,
-    wheelColor: 0x113311,
-    description: 'Drift master',
-    speed: 2,
-    handling: 5,
-  },
-  {
-    id: 3,
-    name: 'Golden Flash',
-    color: 0xffcc00,
-    bodyColor: 0xffcc00,
-    windowColor: 0xffe88a,
-    wheelColor: 0x332200,
-    description: 'All-rounder champion',
+    wheelColor: 0x111111,
+    description: 'Full WRC spec — all-terrain, all conditions',
     speed: 4,
     handling: 4,
-  },
-  {
-    id: 4,
-    name: 'Phantom Violet',
-    color: 0xaa22ff,
-    bodyColor: 0xaa22ff,
-    windowColor: 0xddaaff,
-    wheelColor: 0x220044,
-    description: 'Lightweight speedster',
-    speed: 4,
-    handling: 3,
   },
 ];
