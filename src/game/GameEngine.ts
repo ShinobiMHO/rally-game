@@ -297,8 +297,9 @@ export class GameEngine {
     geo.setIndex(indices);
 
     // Dirt road — texture procédurale
-    const roadTex = this.createTexture('dirt-road', 512);
-    const mat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.95, metalness: 0 });
+    const roadTex = this.loadTex('/textures/dirt_road.jpg', 3, 25);
+    const roadNormal = this.loadTex('/textures/dirt_road_normal.jpg', 3, 25);
+    const mat = new THREE.MeshStandardMaterial({ map: roadTex, normalMap: roadNormal, normalScale: new THREE.Vector2(1.5, 1.5), roughness: 0.92, metalness: 0 });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true;
     this.scene.add(road);
@@ -717,8 +718,8 @@ export class GameEngine {
     const cavePoints = this.trackPoints.filter(tp => tp.center.y < -0.8);
     if (cavePoints.length === 0) return;
 
-    const rockTexCave = this.createTexture('rock', 256);
-    const rockMat  = new THREE.MeshStandardMaterial({ map: rockTexCave, roughness: 0.9, metalness: 0, color: 0x2a2018 });
+    const rockTexCave = this.loadTex('/textures/rock.jpg', 1, 1);
+    const rockMat  = new THREE.MeshStandardMaterial({ map: rockTexCave, roughness: 0.9, metalness: 0, color: 0x888880 });
     const mossMat  = new THREE.MeshLambertMaterial({ color: 0x1a3a0a });
     const hw = this.mapConfig.trackWidth / 2 + 1;
 
@@ -800,7 +801,7 @@ export class GameEngine {
     const cliffPoints = this.trackPoints.filter(tp => tp.center.y > 18);
     if (cliffPoints.length === 0) return;
 
-    const rockTexCliff = this.createTexture('rock', 256);
+    const rockTexCliff = this.loadTex('/textures/rock.jpg', 2, 2);
     const cliffMat  = new THREE.MeshStandardMaterial({ map: rockTexCliff, roughness: 0.85, metalness: 0 });
     const darkCliff = new THREE.MeshStandardMaterial({ color: 0x3a2e24, roughness: 0.9, metalness: 0 });
     const rngCliff  = this.seededRng(888);
@@ -941,7 +942,7 @@ export class GameEngine {
     // ── Dense forest: 450 trees, packed on both sides ──
     const treeMat1 = new THREE.MeshLambertMaterial({ color: this.mapConfig.treeColor });
     const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
-    const barkTex = this.createTexture('tree-bark', 256);
+    const barkTex = this.loadTex('/textures/bark.jpg', 1, 3);
     const trunkMat = new THREE.MeshStandardMaterial({ map: barkTex, roughness: 0.9, metalness: 0 });
 
     for (let i = 0; i < 280; i++) {
@@ -1200,7 +1201,7 @@ export class GameEngine {
     }
 
     // ── Rochers au bord de piste (concentrés aux virages serrés) ──
-    const rockTexCorner = this.createTexture('rock', 256);
+    const rockTexCorner = this.loadTex('/textures/rock.jpg', 1, 1);
     const rockMat = new THREE.MeshStandardMaterial({ map: rockTexCorner, roughness: 0.85, metalness: 0 });
     const darkRockMat = new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 0.9, metalness: 0 });
     const rngRock = this.seededRng(555);
@@ -1301,7 +1302,7 @@ export class GameEngine {
     }
     groundGeo.computeVertexNormals();
 
-    const groundTex = this.createTexture('forest-ground', 512);
+    const groundTex = this.loadTex('/textures/forest_ground.jpg', 8, 8);
     const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1.0, metalness: 0 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
@@ -1531,7 +1532,7 @@ export class GameEngine {
     this.carGroup = new THREE.Group();
 
     const carTex = this.createTexture('car-body', 512);
-    const white = new THREE.MeshStandardMaterial({ map: carTex, roughness: 0.4, metalness: 0.08 });
+    const white = new THREE.MeshStandardMaterial({ map: carTex, roughness: 0.35, metalness: 0.12, envMapIntensity: 0.6 });
     const blue = new THREE.MeshStandardMaterial({ color: 0x003399, roughness: 0.45, metalness: 0.1 });
     const red = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.45, metalness: 0.05 });
     const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, metalness: 0.2 });
@@ -1702,7 +1703,16 @@ export class GameEngine {
 
   // ─────────────── Lights ───────────────
 
-  // ─── Texture factory (procédurale, Canvas 2D) ───────────────────────────
+  // ─── Texture loader (vraies textures + fallback procédural) ─────────────
+  private texLoader = new THREE.TextureLoader();
+  private loadTex(path: string, repeatX: number, repeatY: number): THREE.Texture {
+    const tex = this.texLoader.load(path);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeatX, repeatY);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
   private createTexture(type: 'dirt-road' | 'forest-ground' | 'tree-bark' | 'rock' | 'car-body', size = 512): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
