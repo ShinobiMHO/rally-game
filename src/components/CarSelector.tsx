@@ -66,20 +66,20 @@ export default function CarSelector({ onSelect, nickname }: Props) {
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       height: '100vh', width: '100vw',
-      background: 'linear-gradient(160deg, #0a1a05, #1a3510, #0f200a)',
+      background: 'linear-gradient(160deg, #1a0800, #3a1500, #220a00)',
       padding: 24,
       fontFamily: 'monospace',
     }}>
       {/* Top label */}
-      <div style={{ fontSize: 12, color: '#5a8a40', letterSpacing: 4, marginBottom: 12, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 12, color: '#aa6633', letterSpacing: 4, marginBottom: 12, textTransform: 'uppercase' }}>
         Pilote : {nickname}
       </div>
 
-      <div style={{ fontSize: 32, fontWeight: 900, marginBottom: 4, color: '#f0f0f0', letterSpacing: -1 }}>
+      <div style={{ fontSize: 32, fontWeight: 900, marginBottom: 4, color: '#ffcc88', letterSpacing: -1 }}>
         🏁 WRC Beast
       </div>
-      <div style={{ fontSize: 13, color: '#7ab05a', marginBottom: 36, letterSpacing: 1 }}>
-        FORÊT DE BRETAGNE — SPÉCIALE TERRE
+      <div style={{ fontSize: 13, color: '#cc7733', marginBottom: 36, letterSpacing: 1 }}>
+        FORÊT DES CORBIÈRES — CRÉPUSCULE
       </div>
 
       {/* Car preview */}
@@ -120,7 +120,7 @@ export default function CarSelector({ onSelect, nickname }: Props) {
           padding: '18px 64px',
           borderRadius: 12,
           border: 'none',
-          background: 'linear-gradient(135deg, #003399, #0055dd)',
+          background: 'linear-gradient(135deg, #cc4400, #ff8800)',
           color: '#fff',
           fontSize: 20,
           fontWeight: 900,

@@ -900,6 +900,7 @@ export class GameEngine {
     this.buildLakes(rng);
     this.buildTallGrass(rng);
     this.buildRallySigns(rng);
+    this.buildLeafShadows(rng);
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
     const fernMat = new THREE.MeshLambertMaterial({ color: 0x2d6611 });
@@ -1140,6 +1141,41 @@ export class GameEngine {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
+  }
+
+  private buildLeafShadows(rng: () => number) {
+    // Patches de feuilles mortes + ombres de sous-bois sur le sol et la route
+    const rngL = this.seededRng(919);
+    const leafMat = new THREE.MeshBasicMaterial({ color: 0x1a0a00, transparent: true, opacity: 0.22, depthWrite: false });
+    const leafColors = [
+      new THREE.MeshBasicMaterial({ color: 0x7a3a00, transparent: true, opacity: 0.5, depthWrite: false }), // feuilles orange
+      new THREE.MeshBasicMaterial({ color: 0x5a2a00, transparent: true, opacity: 0.4, depthWrite: false }), // feuilles marron
+      new THREE.MeshBasicMaterial({ color: 0x8a4a00, transparent: true, opacity: 0.35, depthWrite: false }),// feuilles dorées
+    ];
+
+    for (let i = 0; i < 200; i++) {
+      const x = (rngL() - 0.5) * 600;
+      const z = (rngL() - 0.5) * 1100;
+
+      // Nearest track point
+      let minDist = Infinity; let nearY = 0;
+      for (const tp of this.trackPoints) {
+        const d = Math.hypot(x - tp.center.x, z - tp.center.z);
+        if (d < minDist) { minDist = d; nearY = tp.center.y; }
+      }
+
+      const hw = this.mapConfig.trackWidth;
+      const isOnRoad = minDist < hw;
+      const y = isOnRoad ? nearY + 0.06 : this.getTerrainY(x, z) + 0.05;
+      const mat = isOnRoad ? leafMat : leafColors[Math.floor(rngL() * leafColors.length)];
+      const w = 1.5 + rngL() * 5;
+      const l = 1.5 + rngL() * 5;
+      const patch = new THREE.Mesh(new THREE.PlaneGeometry(w, l), mat);
+      patch.rotation.x = -Math.PI / 2;
+      patch.rotation.z = rngL() * Math.PI;
+      patch.position.set(x, y, z);
+      this.scene.add(patch);
+    }
   }
 
   private buildRallySigns(rng: () => number) {
