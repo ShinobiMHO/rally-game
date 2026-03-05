@@ -508,6 +508,8 @@ export class GameEngine {
     this.buildBridge();
     this.buildJumpRamp();
     this.buildTunnel();
+    this.buildCave();
+    this.buildCliffRoad();
   }
 
   private buildBridge() {
@@ -611,9 +613,9 @@ export class GameEngine {
   }
 
   private buildTunnel() {
-    // Tunnel wp 29-31 of 35 → t ≈ 0.80 to 0.89
-    const tStart = 0.79;
-    const tEnd = 0.90;
+    // Tunnel wp 27-29 of 47 → t ≈ 0.555 to 0.607
+    const tStart = 0.555;
+    const tEnd = 0.610;
     const totalPts = this.trackPoints.length;
     const idxStart = Math.floor(tStart * totalPts);
     const idxEnd = Math.floor(tEnd * totalPts);
@@ -698,6 +700,157 @@ export class GameEngine {
     const beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 2.5, 1.2, 1.2), mat);
     beamGrp.add(beam);
     this.scene.add(beamGrp);
+  }
+
+  // ─── GROTTE (derrière cascade) ─────────────────────────────────────────
+  private buildCave() {
+    // Détecte les track points sous y < 0 → section grotte
+    const cavePoints = this.trackPoints.filter(tp => tp.center.y < 0.5);
+    if (cavePoints.length === 0) return;
+
+    const rockMat  = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
+    const mossMat  = new THREE.MeshLambertMaterial({ color: 0x1a3a0a });
+    const hw = this.mapConfig.trackWidth / 2 + 1;
+
+    // Entrée = premier point de la grotte (transition depuis la surface)
+    const entryPt = cavePoints[0];
+
+    // ── CASCADE à l'entrée ──
+    const waterMat = new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    const fallH = 12, fallW = hw * 2.2;
+    for (let layer = 0; layer < 3; layer++) {
+      const fall = new THREE.Mesh(new THREE.PlaneGeometry(fallW, fallH), waterMat);
+      fall.position.set(entryPt.center.x, entryPt.center.y + fallH / 2 + layer * 0.15, entryPt.center.z - 2);
+      fall.rotation.y = Math.atan2(entryPt.tangent.x, entryPt.tangent.z);
+      this.scene.add(fall);
+    }
+    // Bassin d'eau en bas de la cascade
+    const basinMat = new THREE.MeshBasicMaterial({ color: 0x4488bb, transparent: true, opacity: 0.65 });
+    const basin = new THREE.Mesh(new THREE.PlaneGeometry(fallW, 5), basinMat);
+    basin.rotation.x = -Math.PI / 2;
+    basin.position.set(entryPt.center.x, entryPt.center.y + 0.1, entryPt.center.z - 4);
+    this.scene.add(basin);
+
+    // ── PAROIS ROCHEUSES de la grotte ──
+    const rngCave = this.seededRng(777);
+    for (const tp of cavePoints) {
+      const tangent = tp.tangent.clone().normalize();
+      const normal  = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      const cy = tp.center.y;
+
+      for (const side of [-1, 1]) {
+        // Mur de rochers
+        for (let k = 0; k < 4; k++) {
+          const dist = hw * (1.0 + rngCave() * 0.6);
+          const fwd  = (rngCave() - 0.5) * 8;
+          const pos  = tp.center.clone()
+            .addScaledVector(normal, side * dist)
+            .addScaledVector(tangent, fwd);
+          const s = 1.8 + rngCave() * 3.0;
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rngCave() > 0.3 ? rockMat : mossMat);
+          rock.position.set(pos.x, cy + s * 0.4, pos.z);
+          rock.rotation.set(rngCave() * 2, rngCave() * 6, rngCave() * 2);
+          this.scene.add(rock);
+        }
+        // Stalactites au plafond
+        for (let k = 0; k < 3; k++) {
+          const fwd = (rngCave() - 0.5) * 12;
+          const lat = side * hw * (0.2 + rngCave() * 0.7);
+          const pos = tp.center.clone().addScaledVector(normal, lat).addScaledVector(tangent, fwd);
+          const sh = 0.8 + rngCave() * 2.0;
+          const stal = new THREE.Mesh(new THREE.ConeGeometry(0.2 + rngCave() * 0.3, sh, 5), rockMat);
+          stal.rotation.z = Math.PI; // pointe vers le bas
+          stal.position.set(pos.x, cy + 6 + rngCave() * 2, pos.z);
+          this.scene.add(stal);
+        }
+      }
+
+      // Lumière bleue-verte de grotte
+      if (Math.floor(this.trackPoints.indexOf(tp)) % 8 === 0) {
+        const caveLight = new THREE.PointLight(0x3366aa, 1.2, 30);
+        caveLight.position.set(tp.center.x, cy + 3, tp.center.z);
+        this.scene.add(caveLight);
+      }
+    }
+
+    // Plafond rocheux (dalle plate avec texture rocher)
+    for (let i = 1; i < cavePoints.length - 1; i += 3) {
+      const tp = this.trackPoints[this.trackPoints.indexOf(cavePoints[i])];
+      const seg = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2.4, 8), rockMat);
+      seg.rotation.x = Math.PI / 2; // face vers le bas
+      seg.rotation.z = Math.atan2(tp.tangent.x, tp.tangent.z);
+      seg.position.set(tp.center.x, tp.center.y + 6.5, tp.center.z);
+      this.scene.add(seg);
+    }
+  }
+
+  // ─── PAROI DE FALAISE (route sur le flanc) ──────────────────────────────
+  private buildCliffRoad() {
+    // Détecte les track points à y > 18 → section falaise
+    const cliffPoints = this.trackPoints.filter(tp => tp.center.y > 18);
+    if (cliffPoints.length === 0) return;
+
+    const cliffMat  = new THREE.MeshLambertMaterial({ color: 0x5a4a38 });
+    const darkCliff = new THREE.MeshLambertMaterial({ color: 0x3a2e24 });
+    const rngCliff  = this.seededRng(888);
+    const hw = this.mapConfig.trackWidth / 2;
+
+    for (const tp of cliffPoints) {
+      const tangent = tp.tangent.clone().normalize();
+      const normal  = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      const cy = tp.center.y;
+
+      // ── Paroi rocheuse à GAUCHE (côté montagne) ──
+      for (let k = 0; k < 6; k++) {
+        const dist = hw * (1.1 + rngCliff() * 0.5);
+        const fwd  = (rngCliff() - 0.5) * 10;
+        const height = 8 + rngCliff() * 12;
+        const pos = tp.center.clone()
+          .addScaledVector(normal, -dist) // côté gauche seulement
+          .addScaledVector(tangent, fwd);
+        const s = 2.0 + rngCliff() * 3.5;
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rngCliff() > 0.4 ? cliffMat : darkCliff);
+        rock.position.set(pos.x, cy + height / 2, pos.z);
+        rock.rotation.set(rngCliff(), rngCliff() * 4, rngCliff() * 2);
+        rock.castShadow = true;
+        this.scene.add(rock);
+      }
+
+      // Paroi verticale côté gauche (dalle verticale de roche)
+      const wallPos = tp.center.clone().addScaledVector(normal, -(hw + 3));
+      const wallH = 18 + rngCliff() * 8;
+      const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, wallH, 8), cliffMat);
+      wallMesh.rotation.y = Math.atan2(tangent.x, tangent.z);
+      wallMesh.position.set(wallPos.x, cy + wallH / 2 - 2, wallPos.z);
+      this.scene.add(wallMesh);
+
+      // ── Vide à droite — pas de barrier, juste le gouffre ──
+      // Garde-corps minimal côté droit (1 seul fil)
+      if (Math.floor(this.trackPoints.indexOf(tp)) % 5 === 0) {
+        const railPos = tp.center.clone().addScaledVector(normal, hw + 0.5);
+        const railMat = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2, 4), railMat);
+        post.position.set(railPos.x, cy + 0.6, railPos.z);
+        this.scene.add(post);
+        const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 5.5, 4), railMat);
+        wire.rotation.z = Math.PI / 2;
+        wire.rotation.y = Math.atan2(tangent.x, tangent.z);
+        wire.position.set(railPos.x, cy + 1.1, railPos.z);
+        this.scene.add(wire);
+      }
+    }
+
+    // Nuages / brume dans le vide en dessous
+    const mistMat = new THREE.MeshBasicMaterial({ color: 0xddeeff, transparent: true, opacity: 0.25, depthWrite: false });
+    const midCliff = cliffPoints[Math.floor(cliffPoints.length / 2)];
+    if (midCliff) {
+      for (let m = 0; m < 5; m++) {
+        const mist = new THREE.Mesh(new THREE.PlaneGeometry(80 + m * 30, 20), mistMat);
+        mist.rotation.x = -Math.PI / 2;
+        mist.position.set(midCliff.center.x + (rngCliff() - 0.5) * 60, midCliff.center.y - 8 - m * 6, midCliff.center.z + (rngCliff() - 0.5) * 60);
+        this.scene.add(mist);
+      }
+    }
   }
 
   private buildCheckpoints() {
@@ -2030,16 +2183,7 @@ export class GameEngine {
     const drift = Math.abs(this.physics.lateralVel);
     const speed = Math.abs(this.physics.speed);
 
-    if (speed > 4) {
-      this.dirtParticleTimer += dt;
-      const interval = drift > 3 ? 0.03 : 0.08;
-      if (this.dirtParticleTimer > interval) {
-        this.dirtParticleTimer = 0;
-        // Dirt/mud spray — brown particles
-        const color = drift > 3 ? 0x8a5a2a : 0xa07840;
-        this.emitDirt(color, 2.0, drift > 3 ? 350 : 250);
-      }
-    }
+    // Particules de terre supprimées
 
     this.skidTimer += dt;
     if (Math.abs(this.physics.lateralVel) > 3.5 && Math.abs(this.physics.speed) > 4) {
