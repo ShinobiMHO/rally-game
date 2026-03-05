@@ -899,6 +899,7 @@ export class GameEngine {
     // ── Lakes ──
     this.buildLakes(rng);
     this.buildTallGrass(rng);
+    this.buildRallySigns(rng);
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
     const fernMat = new THREE.MeshLambertMaterial({ color: 0x2d6611 });
@@ -1139,6 +1140,79 @@ export class GameEngine {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
+  }
+
+  private buildRallySigns(rng: () => number) {
+    // Panneaux style WRC : distance au départ (0.5km, 1km...) + flèches de virage
+    const totalPts = this.trackPoints.length;
+    const postMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+    const hw = this.mapConfig.trackWidth / 2;
+
+    // Panneaux kilométriques tous les ~15% du tracé
+    const distMarkers = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90];
+    const distLabels  = ['150m', '300m', '450m', '600m', '750m', '900m'];
+    distMarkers.forEach((t, idx) => {
+      const i = Math.floor(t * (totalPts - 1));
+      const tp = this.trackPoints[i];
+      const tangent = tp.tangent.clone().normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      const side = idx % 2 === 0 ? 1 : -1;
+      const pos = tp.center.clone().addScaledVector(normal, side * (hw + 1.5));
+
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 6), postMat);
+      post.position.set(pos.x, tp.center.y + 1.1, pos.z);
+      this.scene.add(post);
+
+      // Panneau coloré (rouge pour 150/300, jaune pour 450/600, vert pour 750/900)
+      const colors = [0xdd2222, 0xdd2222, 0xddaa00, 0xddaa00, 0x22aa22, 0x22aa22];
+      const signMat = new THREE.MeshLambertMaterial({ color: colors[idx] });
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 0.05), signMat);
+      sign.position.set(pos.x, tp.center.y + 2.25, pos.z);
+      sign.rotation.y = Math.atan2(tangent.x, tangent.z);
+      this.scene.add(sign);
+
+      // Bande blanche sur panneau
+      const stripMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.12, 0.06), stripMat);
+      strip.position.set(pos.x, tp.center.y + 2.25, pos.z);
+      strip.rotation.y = Math.atan2(tangent.x, tangent.z);
+      this.scene.add(strip);
+    });
+
+    // Signalisation de virage (flèches) aux virages serrés détectés
+    const rngSign = this.seededRng(411);
+    for (let i = 8; i < totalPts - 8; i += 8) {
+      const tp = this.trackPoints[i];
+      const tpA = this.trackPoints[i - 5];
+      const tpB = this.trackPoints[i + 5];
+      const d1 = new THREE.Vector2(tp.center.x - tpA.center.x, tp.center.z - tpA.center.z).normalize();
+      const d2 = new THREE.Vector2(tpB.center.x - tp.center.x, tpB.center.z - tp.center.z).normalize();
+      const curv = 1 - d1.dot(d2);
+      if (curv < 0.2) continue;
+
+      const tangent = tp.tangent.clone().normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+      // Flèche sur le côté intérieur du virage
+      const turnSide = (d2.x * d1.y - d2.y * d1.x) > 0 ? -1 : 1;
+      const pos = tp.center.clone().addScaledVector(normal, turnSide * (hw + 1.5));
+
+      const arrowPost = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.8, 6), postMat);
+      arrowPost.position.set(pos.x, tp.center.y + 0.9, pos.z);
+      this.scene.add(arrowPost);
+
+      const arrowMat = new THREE.MeshLambertMaterial({ color: 0xff8800 });
+      const arrowSign = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.55, 0.07), arrowMat);
+      arrowSign.position.set(pos.x, tp.center.y + 2.0, pos.z);
+      arrowSign.rotation.y = Math.atan2(tangent.x, tangent.z) + (turnSide > 0 ? 0.2 : -0.2);
+      this.scene.add(arrowSign);
+
+      // Bande diagonale blanche
+      const diag = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 0.08), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      diag.position.set(pos.x, tp.center.y + 1.95, pos.z);
+      diag.rotation.y = arrowSign.rotation.y;
+      diag.rotation.z = turnSide * 0.35;
+      this.scene.add(diag);
+    }
   }
 
   private buildTallGrass(rng: () => number) {
