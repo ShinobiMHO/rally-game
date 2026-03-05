@@ -242,16 +242,20 @@ export class GameEngine {
       const t = i / divisions;
       const pt = this.spline.getPoint(t);
       const tangent = this.spline.getTangent(t).normalize();
-      // Normal stays horizontal (roads don't bank — simplification)
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      const left = pt.clone().add(normal.clone().multiplyScalar(hw));
+      const left  = pt.clone().add(normal.clone().multiplyScalar(hw));
       const right = pt.clone().sub(normal.clone().multiplyScalar(hw));
-      // Keep left/right at road Y (no banking)
-      left.y = pt.y;
-      right.y = pt.y;
+
+      // Banking sur la section falaise (y > 20) : mur penché ~30°
+      const bankAngle = pt.y > 20 ? Math.min((pt.y - 20) / 8, 1.0) * 3.5 : 0;
+      left.y  = pt.y + bankAngle;   // côté montagne plus haut
+      right.y = pt.y - bankAngle;   // côté vide plus bas → route inclinée
+
       this.trackPoints.push({ center: pt.clone(), tangent, left, right });
-      vertices.push(left.x, pt.y + 0.02, left.z, right.x, pt.y + 0.02, right.z);
+      vertices.push(left.x, left.y + 0.02, left.z, right.x, right.y + 0.02, right.z);
       uvs.push(0, t * hw * 2, 1, t * hw * 2);
+      // Normale inclinée selon le banking
+      const bankNorm = new THREE.Vector3(normal.x * Math.sin(bankAngle > 0 ? 0.4 : 0), Math.cos(bankAngle > 0 ? 0.4 : 0), normal.z * Math.sin(bankAngle > 0 ? 0.4 : 0)).normalize();
       normals.push(0, 1, 0, 0, 1, 0);
     }
     for (let i = 0; i < divisions; i++) {
@@ -705,7 +709,7 @@ export class GameEngine {
   // ─── GROTTE (derrière cascade) ─────────────────────────────────────────
   private buildCave() {
     // Détecte les track points sous y < 0 → section grotte
-    const cavePoints = this.trackPoints.filter(tp => tp.center.y < 0.5);
+    const cavePoints = this.trackPoints.filter(tp => tp.center.y < -0.8);
     if (cavePoints.length === 0) return;
 
     const rockMat  = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
@@ -1980,7 +1984,11 @@ export class GameEngine {
       const closestPt2D = new THREE.Vector2(closestPt.x, closestPt.z);
       const distFromCenter = pos2D.distanceTo(closestPt2D);
       const halfWidth = this.mapConfig.trackWidth * 0.5;
-      const targetY = closestPt.y + 0.52;
+      // Sur la falaise, la voiture doit coller à la surface bancée (moyenne L+R)
+      const closestIdx = Math.min(Math.floor(closestT * this.trackPoints.length), this.trackPoints.length - 1);
+      const closestTp = this.trackPoints[closestIdx];
+      const bankOffset = closestTp ? (closestTp.left.y + closestTp.right.y) / 2 - closestTp.center.y : 0;
+      const targetY = closestPt.y + bankOffset + 0.52;
 
       if (this.isAirborne) {
         // ── En l'air : gravité ──
@@ -2002,15 +2010,18 @@ export class GameEngine {
           this.isAirborne = false;
         }
       } else {
-        const prevTargetY = closestPt.y; // road center Y
-        // Détecter décollage : route qui chute brusquement devant la voiture
-        const yDrop = prevTargetY - (physics.position.y - 0.52);
-        if (yDrop < -3.0 && Math.abs(physics.speed) > 10) {
-          // Lancé dans l'air !
+        // Détecte décollage : road y qui chute brusquement sous la voiture
+        const yDrop = closestPt.y - (physics.position.y - 0.52);
+        if (yDrop < -3.5 && Math.abs(physics.speed) > 10) {
           this.isAirborne = true;
-          this.verticalVel = Math.abs(physics.speed) * 0.14; // élan vertical
+          this.verticalVel = Math.abs(physics.speed) * 0.12;
         } else {
-          physics.position.y = THREE.MathUtils.lerp(physics.position.y, targetY, 0.2);
+          // Snap fort sur la route — pas de traversée du sol
+          const diff = targetY - physics.position.y;
+          const snapSpeed = diff > 0 ? 0.55 : 0.30; // monte vite, descend doucement
+          physics.position.y += diff * snapSpeed;
+          // Jamais sous la route
+          if (physics.position.y < targetY - 0.05) physics.position.y = targetY - 0.05;
         }
       }
 
@@ -2018,16 +2029,26 @@ export class GameEngine {
       if (!this.isAirborne && distFromCenter > halfWidth) {
         const pushDir = pos2D.clone().sub(closestPt2D).normalize();
         const overlap = distFromCenter - halfWidth;
-        physics.position.x -= pushDir.x * (overlap + 0.1);
-        physics.position.z -= pushDir.y * (overlap + 0.1);
-        physics.speed *= 0.45;
-        physics.lateralVel *= 0.4;
+        physics.position.x -= pushDir.x * (overlap * 1.5 + 0.2);
+        physics.position.z -= pushDir.y * (overlap * 1.5 + 0.2);
+        physics.speed *= Math.max(0.3, 1 - overlap * 0.15);
+        physics.lateralVel *= 0.3;
       }
     }
 
-    // ── Mesh update ──
+    // ── Mesh update — voiture alignée avec la pente de la route ──
     this.carGroup.position.copy(physics.position);
     this.carGroup.rotation.y = physics.heading;
+
+    // Pitch (avant-arrière) selon la pente de la route
+    if (this.spline) {
+      const t = this.findClosestT(new THREE.Vector2(physics.position.x, physics.position.z));
+      const tangent3D = this.spline.getTangent(t);
+      const pitchAngle = -Math.atan2(tangent3D.y, Math.sqrt(tangent3D.x * tangent3D.x + tangent3D.z * tangent3D.z));
+      this.carGroup.rotation.x = THREE.MathUtils.lerp(this.carGroup.rotation.x, pitchAngle, 0.15);
+    } else {
+      this.carGroup.rotation.x = THREE.MathUtils.lerp(this.carGroup.rotation.x, 0, 0.15);
+    }
 
     // Wheel spin
     const wheelRot = physics.speed * dt * 1.4;
