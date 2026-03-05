@@ -24,7 +24,7 @@ export default function NicknameScreen({ onSubmit }: Props) {
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       height: '100vh', width: '100vw',
-      background: 'linear-gradient(160deg, #1a0a00, #3a1500, #5a2800, #3a1500)',
+      background: 'linear-gradient(160deg, #0a1a30, #0f2a4a, #0a1a30)',
       padding: '20px',
       boxSizing: 'border-box',
     }}>
@@ -34,7 +34,7 @@ export default function NicknameScreen({ onSubmit }: Props) {
           fontSize: 'clamp(48px, 12vw, 80px)',
           fontWeight: 900,
           letterSpacing: -2,
-          background: 'linear-gradient(90deg, #ff6600, #ffaa33, #ffdd88)',
+          background: 'linear-gradient(90deg, #0088ff, #44ccff, #ffffff)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           lineHeight: 1,
@@ -51,7 +51,7 @@ export default function NicknameScreen({ onSubmit }: Props) {
           FORÊT DES CORBIÈRES
         </div>
         <div style={{
-          fontSize: 13, color: '#664422', marginTop: 6, letterSpacing: 2,
+          fontSize: 13, color: '#4488aa', marginTop: 6, letterSpacing: 2,
         }}>
           ▸ CRÉPUSCULE — SPÉCIALE TERRE ◂
         </div>
@@ -59,8 +59,8 @@ export default function NicknameScreen({ onSubmit }: Props) {
 
       {/* Input card */}
       <div style={{
-        background: 'rgba(255,120,30,0.08)',
-        border: '1px solid rgba(255,120,30,0.25)',
+        background: 'rgba(30,120,255,0.08)',
+        border: '1px solid rgba(30,120,255,0.25)',
         borderRadius: 24,
         padding: 'clamp(24px, 5vw, 40px) clamp(20px, 6vw, 48px)',
         backdropFilter: 'blur(10px)',

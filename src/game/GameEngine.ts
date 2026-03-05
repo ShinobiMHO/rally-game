@@ -120,10 +120,10 @@ export class GameEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Sunset sky — Forêt des Corbières crépuscule
+    // Jour ensoleillé — forêt diurne
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xa04818);
-    this.scene.fog = new THREE.FogExp2(0x6a3010, 0.009);
+    this.scene.background = new THREE.Color(0x87ceeb); // ciel bleu clair
+    this.scene.fog = new THREE.FogExp2(0x90c8e0, 0.007);
     this.buildSkyDome();
 
     // Third-person camera — close, low, behind the car
@@ -296,7 +296,7 @@ export class GameEngine {
 
     // Dirt tyre tracks (darker strips on road center)
     this.buildTyreTracks(divisions);
-    this.buildRoadEdges(divisions);
+    // buildRoadEdges retiré — trop de draw calls
     this.buildStartFinishLine();
     this.buildBarriers();
     this.buildCheckpoints();
@@ -310,7 +310,7 @@ export class GameEngine {
 
   private buildTyreTracks(divisions: number) {
     // Two dark tyre marks along the road
-    const mat = new THREE.MeshBasicMaterial({ color: 0x5a3820, transparent: true, opacity: 0.45 });
+    const mat = new THREE.MeshBasicMaterial({ color: 0x5a3820, transparent: true, opacity: 0.2 });
     const step = 6;
     for (let i = 0; i < divisions; i += step) {
       const tp = this.trackPoints[i];
@@ -779,9 +779,9 @@ export class GameEngine {
     const treeMat2 = new THREE.MeshLambertMaterial({ color: 0x2a6b10 });
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c3a1a });
 
-    for (let i = 0; i < 550; i++) {
+    for (let i = 0; i < 280; i++) {
       const x = (rng() - 0.5) * 600;
-      const z = (rng() - 0.5) * 1100; // couvre toute la longueur de piste
+      const z = (rng() - 0.5) * 1100;
 
       let minDist = Infinity;
       let roadY = 0;
@@ -822,7 +822,7 @@ export class GameEngine {
     const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xddddcc });
     const birchCrownMat = new THREE.MeshLambertMaterial({ color: 0x88cc44 });
 
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 50; i++) {
       const x = (rng() - 0.5) * 600;
       const z = (rng() - 0.5) * 1100;
 
@@ -900,7 +900,7 @@ export class GameEngine {
     this.buildLakes(rng);
     this.buildTallGrass(rng);
     this.buildRallySigns(rng);
-    this.buildLeafShadows(rng);
+    // buildLeafShadows supprimé — trop de draw calls
 
     // ── Végétation dense au bord de piste (fougères, buissons, souches) ──
     const fernMat = new THREE.MeshLambertMaterial({ color: 0x2d6611 });
@@ -911,7 +911,7 @@ export class GameEngine {
     const hw = this.mapConfig.trackWidth;
 
     // On parcourt chaque trackPoint et on place des objets sur les deux côtés
-    for (let i = 2; i < this.trackPoints.length - 2; i += 2) {
+    for (let i = 2; i < this.trackPoints.length - 2; i += 6) {
       const tp = this.trackPoints[i];
       const roadDir = tp.tangent.clone().normalize();
       const perp = new THREE.Vector3(-roadDir.z, 0, roadDir.x); // perpendiculaire à la route
@@ -1103,8 +1103,8 @@ export class GameEngine {
   }
 
   private buildTerrain(rng: () => number) {
-    const size = 1200;  // couvre toute la longueur de piste (~1000 unités)
-    const segs = 80;
+    const size = 1100;
+    const segs = 50;  // réduit pour performances
     const groundGeo = new THREE.PlaneGeometry(size, size, segs, segs);
     groundGeo.rotateX(-Math.PI / 2);
 
@@ -1135,8 +1135,8 @@ export class GameEngine {
     }
     groundGeo.computeVertexNormals();
 
-    // Sol forestier foncé avec teinte automne/crépuscule
-    const baseGroundColor = new THREE.Color(0x1a3008); // vert-brun foncé
+    // Sol forestier — herbe verte de jour
+    const baseGroundColor = new THREE.Color(0x2d5a10);
     const groundMat = new THREE.MeshLambertMaterial({ color: baseGroundColor });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
@@ -1262,13 +1262,13 @@ export class GameEngine {
     const rngG = this.seededRng(631);
     const hw = this.mapConfig.trackWidth / 2;
 
-    for (let i = 0; i < this.trackPoints.length - 1; i += 4) {
+    for (let i = 0; i < this.trackPoints.length - 1; i += 10) {
       const tp = this.trackPoints[i];
       const tangent = tp.tangent.clone().normalize();
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
 
       for (const side of [-1, 1]) {
-        const numTufts = 2 + Math.floor(rngG() * 3);
+        const numTufts = 1 + Math.floor(rngG() * 2);
         for (let k = 0; k < numTufts; k++) {
           const dist = hw * (1.05 + rngG() * 0.6);
           const fwd = (rngG() - 0.5) * 6;
@@ -1537,14 +1537,13 @@ export class GameEngine {
   // ─────────────── Lights ───────────────
 
   private buildSkyDome() {
-    // Dégradé coucher de soleil : horizon orange brûlé → zenith violet/bleu nuit
+    // Ciel de jour — horizon blanc-bleu → zenith bleu profond
     const skyGeo = new THREE.SphereGeometry(500, 32, 16);
-    // Vertex colors pour le gradient
     const posAttr = skyGeo.attributes.position as THREE.BufferAttribute;
     const colors: number[] = [];
-    const horizonColor = new THREE.Color(0xd45010); // orange brûlé bas
-    const midColor    = new THREE.Color(0x8a2a50);  // rose-violet mi-hauteur
-    const zenithColor = new THREE.Color(0x0d0820);  // bleu nuit tout en haut
+    const horizonColor = new THREE.Color(0xddf0ff); // horizon blanc laiteux
+    const midColor    = new THREE.Color(0x6ab4e8);  // bleu clair
+    const zenithColor = new THREE.Color(0x2472c8);  // bleu profond zenith
     for (let i = 0; i < posAttr.count; i++) {
       const y = posAttr.getY(i);
       const t = Math.max(0, Math.min(1, y / 500));  // 0 = horizon, 1 = zenith
@@ -1559,40 +1558,31 @@ export class GameEngine {
     sky.renderOrder = -1;
     this.scene.add(sky);
 
-    // Disque solaire — glowing sphere à l'horizon
-    const sunSphereMat = new THREE.MeshBasicMaterial({ color: 0xffdd66 });
-    const sunSphere = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 8), sunSphereMat);
-    sunSphere.position.set(400, 35, -160); // horizon côté droit, très bas
+    // Soleil de jour — haut dans le ciel
+    const sunSphereMat = new THREE.MeshBasicMaterial({ color: 0xfffce0 });
+    const sunSphere = new THREE.Mesh(new THREE.SphereGeometry(14, 12, 8), sunSphereMat);
+    sunSphere.position.set(200, 280, -100);
     this.scene.add(sunSphere);
-
-    // Halo solaire
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0xff8822, transparent: true, opacity: 0.18, side: THREE.BackSide });
-    const halo = new THREE.Mesh(new THREE.SphereGeometry(40, 16, 8), haloMat);
-    halo.position.copy(sunSphere.position);
-    this.scene.add(halo);
   }
 
   private setupLights() {
-    // Sunset ambient — chaud mais pas trop lumineux (forêt filtre la lumière)
-    this.scene.add(new THREE.AmbientLight(0xaa6622, 0.55));
+    // Lumière ambiante de jour (ciel bleu)
+    this.scene.add(new THREE.AmbientLight(0xc8e0f0, 0.65));
 
-    // Sol ambient — lumière remontante verte (sous-bois)
-    this.scene.add(new THREE.AmbientLight(0x112208, 0.35));
-
-    // Soleil — très rasant, lumière dorée crépusculaire
-    const sun = new THREE.DirectionalLight(0xff8833, 1.0);
-    sun.position.set(120, 18, -40); // très bas sur l'horizon
+    // Soleil de milieu de journée — blanc légèrement chaud
+    const sun = new THREE.DirectionalLight(0xfff5e0, 1.4);
+    sun.position.set(100, 150, -80);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024); // réduit pour perf
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 700;
-    sun.shadow.camera.left = sun.shadow.camera.bottom = -280;
-    sun.shadow.camera.right = sun.shadow.camera.top = 280;
+    sun.shadow.camera.far = 600;
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -250;
+    sun.shadow.camera.right = sun.shadow.camera.top = 250;
     this.scene.add(sun);
 
-    // Fill light — ombre mauve/violet du sous-bois
-    const fill = new THREE.DirectionalLight(0x331166, 0.4);
-    fill.position.set(-60, 30, 80);
+    // Fill light — ciel bleu de l'autre côté
+    const fill = new THREE.DirectionalLight(0x8ab8e0, 0.3);
+    fill.position.set(-80, 60, 80);
     this.scene.add(fill);
   }
 
@@ -1744,9 +1734,9 @@ export class GameEngine {
 
     const speedBoost = 0.9 + (carConfig.speed - 1) * 0.18;
     const handlingBoost = 0.7 + (carConfig.handling - 1) * 0.16;
-    const maxSpeed = 24 * speedBoost;   // top speed réduit
-    const accel = 13 * speedBoost;      // accélération bien plus progressive
-    const brakeForce = 44;
+    const maxSpeed = 17 * speedBoost;   // vitesse max réduite
+    const accel = 9 * speedBoost;       // accélération plus douce
+    const brakeForce = 32;
     const rollFriction = 5;
     const steerMax = 2.6 * handlingBoost;        // braquage plus vif
     const lateralGrip = 2.8 + (carConfig.handling - 1) * 0.5;
@@ -2017,8 +2007,8 @@ export class GameEngine {
     const airBonusH = this.isAirborne ? Math.max(0, this.verticalVel * 0.5) + 3 : 0;
     const airBonusBehind = this.isAirborne ? 4 : 0;
 
-    const height = 3.2 + speedAbs * 0.03 + airBonusH;
-    const behind = 11 + speedAbs * 0.08 + airBonusBehind;
+    const height = 2.8 + speedAbs * 0.025 + airBonusH;
+    const behind = 8 + speedAbs * 0.06 + airBonusBehind;  // caméra plus proche
 
     // Decay camera shake
     this.camShake *= 0.88;
@@ -2080,7 +2070,7 @@ export class GameEngine {
   }
 
   private addSkidMark() {
-    const mat = new THREE.MeshBasicMaterial({ color: 0x221100, transparent: true, opacity: 0.5, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({ color: 0x221100, transparent: true, opacity: 0.18, depthWrite: false });
     for (const side of [-2.5, 2.5]) {
       const normal = new THREE.Vector3(Math.cos(this.physics.heading), 0, -Math.sin(this.physics.heading));
       const pos = this.physics.position.clone().addScaledVector(normal, side);
