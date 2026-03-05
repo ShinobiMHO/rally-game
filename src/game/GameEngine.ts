@@ -420,31 +420,39 @@ export class GameEngine {
   private makeCheckpointGate(tp: TrackPoint, hw: number, angle: number, glowing: boolean): THREE.Group {
     const group = new THREE.Group();
     const color = glowing ? 0x00ff88 : 0xffaa00;
-    const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: glowing ? 0.9 : 0.7 });
-    const height = 5;
-    const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+    const postMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: glowing ? 0.9 : 0.8 });
+    const stripMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: glowing ? 0.8 : 0.35, side: THREE.DoubleSide });
+    const postH = 5.5;
     const cy = tp.center.y;
 
+    // Perpendicular direction (across the road)
+    const perp = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+
+    // Posts — simple vertical cylinders at each road edge
     for (const sign of [-1, 1]) {
-      const pos = tp.center.clone().addScaledVector(perp, sign * (hw / 2 + 0.3));
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, height, 6), mat);
-      post.position.set(pos.x, cy + height / 2, pos.z);
+      const pos = tp.center.clone().addScaledVector(perp, sign * (hw / 2 + 0.5));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, postH, 7), postMat);
+      post.position.set(pos.x, cy + postH / 2, pos.z);
       group.add(post);
     }
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, hw + 1.5, 6), mat);
-    beam.rotation.z = Math.PI / 2;
-    beam.position.set(tp.center.x, cy + height, tp.center.z);
-    beam.rotation.y = angle;
-    group.add(beam);
 
-    const strip = new THREE.Mesh(
-      new THREE.PlaneGeometry(hw, 1.5),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: glowing ? 0.8 : 0.4 })
-    );
+    // Beam — BoxGeometry avoids Euler rotation issues
+    // Oriented along perp direction (across track), rotated Y = angle
+    const beamGrp = new THREE.Group();
+    beamGrp.position.set(tp.center.x, cy + postH, tp.center.z);
+    beamGrp.rotation.y = angle;
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(hw + 2, 0.38, 0.38), postMat);
+    beamGrp.add(beam);
+    group.add(beamGrp);
+
+    // Ground strip — flat plane aligned with road direction
+    const stripGrp = new THREE.Group();
+    stripGrp.position.set(tp.center.x, cy + 0.06, tp.center.z);
+    stripGrp.rotation.y = angle + Math.PI / 2; // rotate so strip goes across track
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(hw, 1.8), stripMat);
     strip.rotation.x = -Math.PI / 2;
-    strip.rotation.z = angle;
-    strip.position.set(tp.center.x, cy + 0.05, tp.center.z);
-    group.add(strip);
+    stripGrp.add(strip);
+    group.add(stripGrp);
 
     return group;
   }
@@ -1111,13 +1119,18 @@ export class GameEngine {
       if (nextCp && !nextCp.passed) {
         const cpPos = this.spline.getPoint(nextCp.t);
         const dist = pos2D.distanceTo(new THREE.Vector2(cpPos.x, cpPos.z));
-        if (dist < this.mapConfig.trackWidth * 0.9) {
+        if (dist < this.mapConfig.trackWidth * 0.8) {
           this.triggerCheckpoint(this.lapCheckpointIndex);
         }
       }
     }
 
-    const reachedEnd = currentT > 0.92 && this.raceState === 'racing';
+    // Finish detection: distance to actual finish line point (not t-based)
+    const lastTp = this.trackPoints[this.trackPoints.length - 1];
+    const distToFinish = pos2D.distanceTo(new THREE.Vector2(lastTp.center.x, lastTp.center.z));
+    const reachedEnd = distToFinish < this.mapConfig.trackWidth * 0.75
+      && currentT > 0.7   // must have completed majority of stage first
+      && this.raceState === 'racing';
     if (reachedEnd) {
       this.finishRace();
       return;
