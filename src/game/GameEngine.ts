@@ -942,19 +942,30 @@ export class GameEngine {
       const sides = Math.floor(4 + rng() * 3);
       const mat = treeMats[Math.floor(rng() * treeMats.length)];
 
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, h * 0.4, 5), trunkMat);
-      trunk.position.y = h * 0.2;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22 + rng()*0.1, 0.38 + rng()*0.12, h * 0.45, 6), trunkMat);
+      trunk.position.y = h * 0.22;
       trunk.castShadow = true;
 
-      const crown1 = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.7, sides), mat);
-      crown1.position.y = h * 0.55;
-      crown1.castShadow = true;
-
-      const crown2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.68, h * 0.5, sides), mat);
-      crown2.position.y = h * 0.7;
-
-      const crown3 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.38, h * 0.32, sides), mat);
-      crown3.position.y = h * 0.82;
+      // Alterner entre conifère (cônes) et feuillu (sphères)
+      const isConifer = rng() > 0.35;
+      let crown1, crown2, crown3;
+      if (isConifer) {
+        crown1 = new THREE.Mesh(new THREE.ConeGeometry(r, h * 0.72, sides), mat);
+        crown1.position.y = h * 0.58; crown1.castShadow = true;
+        crown2 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.70, h * 0.52, sides), mat);
+        crown2.position.y = h * 0.72;
+        crown3 = new THREE.Mesh(new THREE.ConeGeometry(r * 0.40, h * 0.33, sides), mat);
+        crown3.position.y = h * 0.84;
+      } else {
+        // Feuillu — sphères
+        crown1 = new THREE.Mesh(new THREE.SphereGeometry(r * 0.85, 7, 5), mat);
+        crown1.position.y = h * 0.68; crown1.castShadow = true;
+        crown1.scale.y = 0.8;
+        crown2 = new THREE.Mesh(new THREE.SphereGeometry(r * 0.6, 6, 4), mat);
+        crown2.position.set((rng()-0.5)*r*0.6, h * 0.72, (rng()-0.5)*r*0.6);
+        crown3 = new THREE.Mesh(new THREE.SphereGeometry(r * 0.45, 6, 4), mat);
+        crown3.position.set((rng()-0.5)*r*0.5, h * 0.58, (rng()-0.5)*r*0.5);
+      }
 
       const tree = new THREE.Group();
       tree.add(trunk, crown1, crown2, crown3);
@@ -1043,6 +1054,7 @@ export class GameEngine {
 
     // ── Lakes ──
     this.buildLakes(rng);
+    this.buildMountains(rng);
     this.buildTallGrass(rng);
     this.buildRallySigns(rng);
     // buildLeafShadows supprimé — trop de draw calls
@@ -1286,6 +1298,29 @@ export class GameEngine {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
+  }
+
+  private buildMountains(rng: () => number) {
+    // Silhouettes de montagnes en arrière-plan
+    const mtMat = new THREE.MeshStandardMaterial({ color: 0x3a5a30, roughness: 1.0, metalness: 0 });
+    const mtMat2 = new THREE.MeshStandardMaterial({ color: 0x4a6a40, roughness: 1.0, metalness: 0 });
+    const rngM = this.seededRng(123);
+    const positions = [
+      [-400, -200], [400, -200], [-500, 400], [500, 400],
+      [-300, 900], [300, 900], [0, 1350], [-500, 1200], [500, 1200],
+    ];
+    for (const [mx, mz] of positions) {
+      const h = 80 + rngM() * 120;
+      const r = 60 + rngM() * 80;
+      const segs = 6;
+      const mt = new THREE.Mesh(new THREE.ConeGeometry(r, h, segs), rngM() > 0.5 ? mtMat : mtMat2);
+      mt.position.set(mx + (rngM()-0.5)*60, h/2 - 5, mz + (rngM()-0.5)*60);
+      // Deuxième pic décalé
+      const mt2 = new THREE.Mesh(new THREE.ConeGeometry(r*0.7, h*0.8, segs), mtMat);
+      mt2.position.set(mx + (rngM()-0.5)*80 + 40, h*0.4 - 5, mz + (rngM()-0.5)*80 + 40);
+      this.scene.add(mt);
+      this.scene.add(mt2);
+    }
   }
 
   private buildLeafShadows(rng: () => number) {
